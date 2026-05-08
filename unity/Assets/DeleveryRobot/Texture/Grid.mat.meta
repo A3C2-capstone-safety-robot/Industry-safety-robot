@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 11c4c9f9cfd02eb49ae11a84b4db8c0d
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 294755
+  packageName: Delevery Robot Pack
+  packageVersion: 1.0
+  assetPath: Assets/DeleveryRobot/Texture/Grid.mat
+  uploadId: 807484

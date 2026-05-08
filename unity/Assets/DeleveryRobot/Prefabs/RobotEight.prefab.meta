@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: ecf861d16a4481c48bfc5db453d805d5
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 294755
+  packageName: Delevery Robot Pack
+  packageVersion: 1.0
+  assetPath: Assets/DeleveryRobot/Prefabs/RobotEight.prefab
+  uploadId: 807484

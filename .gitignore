@@ -104,3 +104,32 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+unity/[Ll]ibrary/
+unity/[Tt]emp/
+unity/[Oo]bj/
+unity/[Ll]ogs/
+unity/[Uu]ser[Ss]ettings/
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+
+# ===== Node.js =====
+node_modules/
+dist/
+.env.local
+
+# ===== ROS 2 =====
+ros2/build/
+ros2/install/
+ros2/log/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+*.swp
