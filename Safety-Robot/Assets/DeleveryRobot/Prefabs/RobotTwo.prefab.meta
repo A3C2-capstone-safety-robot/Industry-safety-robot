@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: d0ed065b5f048984797e44f01ce506f2
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 294755
+  packageName: Delevery Robot Pack
+  packageVersion: 1.0
+  assetPath: Assets/DeleveryRobot/Prefabs/RobotTwo.prefab
+  uploadId: 807484

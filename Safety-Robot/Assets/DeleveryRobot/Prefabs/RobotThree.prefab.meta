@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 00b0aa5c3a2a47e4faf6d64ca56cbb5d
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 294755
+  packageName: Delevery Robot Pack
+  packageVersion: 1.0
+  assetPath: Assets/DeleveryRobot/Prefabs/RobotThree.prefab
+  uploadId: 807484
