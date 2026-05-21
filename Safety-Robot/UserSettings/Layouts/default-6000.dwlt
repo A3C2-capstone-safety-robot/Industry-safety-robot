@@ -19,7 +19,7 @@ MonoBehaviour:
     width: 1536
     height: 772.8
   m_ShowMode: 4
-  m_Title: Scene
+  m_Title: Project
   m_RootView: {fileID: 6}
   m_MinSize: {x: 875, y: 300}
   m_MaxSize: {x: 10000, y: 10000}
@@ -48,7 +48,7 @@ MonoBehaviour:
   m_MinSize: {x: 300, y: 112}
   m_MaxSize: {x: 24288, y: 16192}
   vertical: 0
-  controlID: 63
+  controlID: 115
   draggingID: 0
 --- !u!114 &3
 MonoBehaviour:
@@ -594,7 +594,7 @@ MonoBehaviour:
     m_SkipHidden: 0
     m_SearchArea: 1
     m_Folders:
-    - Assets
+    - Assets/DeleveryRobot/Texture
     m_Globs: []
     m_ProductIds: 
     m_AnyWithAssetOrigin: 0
@@ -604,23 +604,24 @@ MonoBehaviour:
   m_ViewMode: 1
   m_StartGridSize: 64
   m_LastFolders:
-  - Assets
+  - Assets/DeleveryRobot/Texture
   m_LastFoldersGridSize: -1
   m_LastProjectPath: "C:\\Storege\\\uB300\uD559_s\\3-2_2026\\Protecter_Robot_system\\Industry-safety-robot\\Safety-Robot"
   m_LockTracker:
     m_IsLocked: 0
   m_LastLocalAssetsSearchArea: 1
   m_FolderTreeState:
-    scrollPos: {x: 0, y: 0}
+    scrollPos: {x: 0, y: 60}
     m_SelectedIDs:
-    - m_Data: 200460
+    - m_Data: 201316
     m_LastClickedID:
-      m_Data: 200460
+      m_Data: 201316
     m_ExpandedIDs:
     - m_Data: 0
     - m_Data: 200460
     - m_Data: 200462
     - m_Data: 200464
+    - m_Data: 201236
     - m_Data: 1000000000
     m_RenameOverlay:
       m_UserAcceptedRename: 0
@@ -683,8 +684,9 @@ MonoBehaviour:
       m_Icon: {fileID: 0}
       m_ResourceFile: 
   m_ListAreaState:
-    m_SelectedInstanceIDs: []
-    m_LastClickedInstanceID: 0
+    m_SelectedInstanceIDs:
+    - m_Data: -95982
+    m_LastClickedInstanceID: -95982
     m_HadKeyboardFocusLastEvent: 0
     m_ExpandedInstanceIDs:
     - m_Data: 65768
@@ -714,7 +716,7 @@ MonoBehaviour:
       m_Icon: {fileID: 0}
       m_ResourceFile: 
     m_NewAssetIndexInList: -1
-    m_ScrollPosition: {x: 0, y: 48}
+    m_ScrollPosition: {x: 0, y: 0}
     m_GridSize: 64
   m_SkipHiddenPackages: 0
   m_DirectoriesAreaWidth: 207
@@ -810,15 +812,17 @@ MonoBehaviour:
   m_SceneHierarchy:
     m_TreeViewState:
       scrollPos: {x: 0, y: 0}
-      m_SelectedIDs: []
+      m_SelectedIDs:
+      - m_Data: -95982
       m_LastClickedID:
-        m_Data: 0
+        m_Data: -95982
       m_ExpandedIDs:
-      - m_Data: -1338
+      - m_Data: -95962
+      - m_Data: -1336
       m_RenameOverlay:
         m_UserAcceptedRename: 0
-        m_Name: 
-        m_OriginalName: 
+        m_Name: RobotSeven
+        m_OriginalName: RobotSeven
         m_EditFieldRect:
           serializedVersion: 2
           x: 0
@@ -826,10 +830,10 @@ MonoBehaviour:
           width: 0
           height: 0
         m_UserData:
-          m_Data: 0
+          m_Data: -95962
         m_IsWaitingForDelay: 0
         m_IsRenaming: 0
-        m_OriginalEventType: 11
+        m_OriginalEventType: 0
         m_IsRenamingFilename: 0
         m_TrimLeadingAndTrailingWhitespace: 0
         m_ClientGUIView: {fileID: 4}
@@ -1337,9 +1341,9 @@ MonoBehaviour:
   m_AudioPlay: 0
   m_DebugDrawModesUseInteractiveLightBakingData: 0
   m_Position:
-    m_Target: {x: 6.0874386, y: -1.1849656, z: -2.245203}
+    m_Target: {x: -1.2852236, y: -0.122231014, z: -10.262488}
     speed: 2
-    m_Value: {x: 6.0874386, y: -1.1849656, z: -2.245203}
+    m_Value: {x: -1.2852236, y: -0.122231014, z: -10.262488}
   m_RenderMode: 0
   m_CameraMode:
     drawMode: 0
@@ -1385,13 +1389,13 @@ MonoBehaviour:
     m_GridAxis: 1
     m_gridOpacity: 0.5
   m_Rotation:
-    m_Target: {x: 0.023283934, y: -0.9575856, z: 0.27557525, w: 0.08090807}
+    m_Target: {x: -0.28616157, y: -0.6991002, z: 0.3698528, w: -0.5409063}
     speed: 2
-    m_Value: {x: -0.023283936, y: 0.9575856, z: -0.27557525, w: -0.08090806}
+    m_Value: {x: -0.28438294, y: -0.7016884, z: 0.37122208, w: -0.5375443}
   m_Size:
-    m_Target: 6.585269
+    m_Target: 0.55214906
     speed: 2
-    m_Value: 6.585269
+    m_Value: 0.5283723
   m_Ortho:
     m_Target: 0
     speed: 2
