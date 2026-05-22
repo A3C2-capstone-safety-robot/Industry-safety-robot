@@ -82,7 +82,7 @@ public class LidarSensor : MonoBehaviour
         long ms = System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return new RosMessageTypes.BuiltinInterfaces.TimeMsg
         {
-            sec = (uint)(ms / 1000),
+            sec = (int)(ms / 1000),
             nanosec = (uint)(ms % 1000 * 1_000_000)
         };
     }
