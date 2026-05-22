@@ -760,15 +760,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -1.892
+      value: -2.66
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.00000006046889
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -9.968
+      value: -9.61
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalRotation.w
@@ -850,13 +850,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 2
-  m_Radius: 0.5
+  m_Height: 0.7
+  m_Radius: 0.25
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Center: {x: 0, y: 0.4, z: 0}
 --- !u!114 &221095397
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1081,6 +1081,85 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 336343109559671598, guid: 338c86de3d0d3514f9afad2da185e7ea, type: 3}
+--- !u!1 &292001972
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 292001975}
+  - component: {fileID: 292001974}
+  - component: {fileID: 292001973}
+  m_Layer: 0
+  m_Name: OverheatManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &292001973
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292001972}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cc423472ed27e0b4b8acb3dbf41a3a74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OverheatScenarioManager
+  machines:
+  - {fileID: 1571027121}
+  - {fileID: 1837751168}
+  - {fileID: 298823435}
+  - {fileID: 2035059459}
+  - {fileID: 1226402713}
+  - {fileID: 1001306154}
+  autoTrigger: 1
+  triggerInterval: 30
+  tempTopicName: /machine_temperatures
+  alertTopicName: /thermal_alerts
+  publishRate: 2
+--- !u!114 &292001974
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292001972}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eccdce42cafd79047aafd235a420c378, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachinePositionPublisher
+  machines:
+  - {fileID: 1571027121}
+  - {fileID: 1837751168}
+  - {fileID: 298823435}
+  - {fileID: 2035059459}
+  - {fileID: 1226402713}
+  - {fileID: 1001306154}
+  topicName: /machine_world_positions
+  frameId: map
+  publishRate: 1
+--- !u!4 &292001975
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 292001972}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -1.892, y: 0, z: -9.968}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &298823432
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1148,8 +1227,47 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 298823435}
   m_SourcePrefab: {fileID: 100100000, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+--- !u!1 &298823433 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 298823432}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &298823434 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 23197755528359488, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 298823432}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &298823435
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 298823433}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 973f4f5e9567df4409ab064cc4375eab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachineHeat
+  machineId: machine1_B
+  baselineTemp: 65
+  currentTemp: 0
+  fluctuation: 1
+  cautionThreshold: 80
+  warningThreshold: 100
+  dangerThreshold: 120
+  maxTemp: 180
+  noiseAmplitude: 0.5
+  machineRenderer: {fileID: 298823434}
+  normalColor: {r: 0.2, g: 0.4, b: 0.8, a: 1}
+  cautionColor: {r: 1, g: 1, b: 0, a: 1}
+  warningColor: {r: 1, g: 0.5, b: 0, a: 1}
+  dangerColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1001 &313120521
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1287,6 +1405,7 @@ GameObject:
   - component: {fileID: 330585546}
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
+  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -1332,6 +1451,27 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerCamera
   moveSpeed: 5
   lookSpeed: 2
+--- !u!114 &330585548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7afe36ee83260ac4cae0fdcbd52ca474, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraPublisher
+  robotCamera: {fileID: 1055590933}
+  imageTopic: /camera/image_raw
+  cameraInfoTopic: /camera/camera_info
+  tfTopic: /tf
+  width: 320
+  height: 240
+  publishRate: 10
+  mapFrame: map
+  cameraFrame: camera_frame
 --- !u!1 &336235121 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 6989736773035127959, guid: 27eb86d4a050527478ec32cd3f1ef7c9, type: 3}
@@ -3032,8 +3172,47 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1001306154}
   m_SourcePrefab: {fileID: 100100000, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+--- !u!1 &1001306152 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1001306151}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &1001306153 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 23197755528359488, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1001306151}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1001306154
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1001306152}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 973f4f5e9567df4409ab064cc4375eab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachineHeat
+  machineId: machine1_F
+  baselineTemp: 65
+  currentTemp: 0
+  fluctuation: 1
+  cautionThreshold: 80
+  warningThreshold: 100
+  dangerThreshold: 120
+  maxTemp: 180
+  noiseAmplitude: 0.5
+  machineRenderer: {fileID: 1001306153}
+  normalColor: {r: 0.2, g: 0.4, b: 0.8, a: 1}
+  cautionColor: {r: 1, g: 1, b: 0, a: 1}
+  warningColor: {r: 1, g: 0.5, b: 0, a: 1}
+  dangerColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &1025849350 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 6723969550708885306, guid: 27eb86d4a050527478ec32cd3f1ef7c9, type: 3}
@@ -3655,8 +3834,47 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1226402713}
   m_SourcePrefab: {fileID: 100100000, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+--- !u!1 &1226402711 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1226402710}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &1226402712 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 23197755528359488, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1226402710}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1226402713
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1226402711}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 973f4f5e9567df4409ab064cc4375eab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachineHeat
+  machineId: machine1_E
+  baselineTemp: 65
+  currentTemp: 0
+  fluctuation: 1
+  cautionThreshold: 80
+  warningThreshold: 100
+  dangerThreshold: 120
+  maxTemp: 180
+  noiseAmplitude: 0.5
+  machineRenderer: {fileID: 1226402712}
+  normalColor: {r: 0.2, g: 0.4, b: 0.8, a: 1}
+  cautionColor: {r: 1, g: 1, b: 0, a: 1}
+  warningColor: {r: 1, g: 0.5, b: 0, a: 1}
+  dangerColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1001 &1259291306
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -4725,8 +4943,47 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1571027121}
   m_SourcePrefab: {fileID: 100100000, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+--- !u!1 &1571027119 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1571027118}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &1571027120 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 23197755528359488, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1571027118}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1571027121
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1571027119}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 973f4f5e9567df4409ab064cc4375eab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachineHeat
+  machineId: machine1_A
+  baselineTemp: 65
+  currentTemp: 0
+  fluctuation: 1
+  cautionThreshold: 80
+  warningThreshold: 100
+  dangerThreshold: 120
+  maxTemp: 180
+  noiseAmplitude: 0.5
+  machineRenderer: {fileID: 1571027120}
+  normalColor: {r: 0.2, g: 0.4, b: 0.8, a: 1}
+  cautionColor: {r: 1, g: 1, b: 0, a: 1}
+  warningColor: {r: 1, g: 0.5, b: 0, a: 1}
+  dangerColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &1576647616 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5198648601176928887, guid: 27eb86d4a050527478ec32cd3f1ef7c9, type: 3}
@@ -5205,8 +5462,47 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1837751168}
   m_SourcePrefab: {fileID: 100100000, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+--- !u!1 &1837751166 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1837751165}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &1837751167 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 23197755528359488, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 1837751165}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1837751168
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1837751166}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 973f4f5e9567df4409ab064cc4375eab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachineHeat
+  machineId: machine1_C
+  baselineTemp: 65
+  currentTemp: 0
+  fluctuation: 1
+  cautionThreshold: 80
+  warningThreshold: 100
+  dangerThreshold: 120
+  maxTemp: 180
+  noiseAmplitude: 0.5
+  machineRenderer: {fileID: 1837751167}
+  normalColor: {r: 0.2, g: 0.4, b: 0.8, a: 1}
+  cautionColor: {r: 1, g: 1, b: 0, a: 1}
+  warningColor: {r: 1, g: 0.5, b: 0, a: 1}
+  dangerColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1001 &1869528376
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5607,8 +5903,47 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2035059459}
   m_SourcePrefab: {fileID: 100100000, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+--- !u!1 &2035059457 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1658855296451982, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 2035059456}
+  m_PrefabAsset: {fileID: 0}
+--- !u!23 &2035059458 stripped
+MeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 23197755528359488, guid: c818fcbe9d69eb44d9440ab7c8465a1e, type: 3}
+  m_PrefabInstance: {fileID: 2035059456}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2035059459
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2035059457}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 973f4f5e9567df4409ab064cc4375eab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MachineHeat
+  machineId: machine1_D
+  baselineTemp: 65
+  currentTemp: 0
+  fluctuation: 1
+  cautionThreshold: 80
+  warningThreshold: 100
+  dangerThreshold: 120
+  maxTemp: 180
+  noiseAmplitude: 0.5
+  machineRenderer: {fileID: 2035059458}
+  normalColor: {r: 0.2, g: 0.4, b: 0.8, a: 1}
+  cautionColor: {r: 1, g: 1, b: 0, a: 1}
+  warningColor: {r: 1, g: 0.5, b: 0, a: 1}
+  dangerColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &2038379499 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8482901822649080301, guid: 27eb86d4a050527478ec32cd3f1ef7c9, type: 3}
@@ -5850,11 +6185,12 @@ SceneRoots:
   - {fileID: 410087041}
   - {fileID: 832575519}
   - {fileID: 120290448}
+  - {fileID: 292001975}
   - {fileID: 221095393}
   - {fileID: 1424753745}
   - {fileID: 1571027118}
-  - {fileID: 298823432}
   - {fileID: 1837751165}
+  - {fileID: 298823432}
   - {fileID: 2035059456}
   - {fileID: 1226402710}
   - {fileID: 1001306151}
