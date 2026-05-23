@@ -161,7 +161,7 @@ public class CameraPublisher : MonoBehaviour
                             x = -uRot.z,
                             y =  uRot.x,
                             z = -uRot.y,
-                            w =  uRot.w
+                            w = uRot.w
                         }
                     }
                 }

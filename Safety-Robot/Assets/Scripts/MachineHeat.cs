@@ -84,7 +84,7 @@ public class MachineHeat : MonoBehaviour
 
         machineRenderer.GetPropertyBlock(propBlock);
         propBlock.SetColor("_EmissionColor", targetColor * 2f);
-        propBlock.SetColor("_Color", targetColor);
+        propBlock.SetColor("_BaseColor", targetColor); // URP로 수정하면 변경해야할 부분
         machineRenderer.SetPropertyBlock(propBlock);
     }
 
