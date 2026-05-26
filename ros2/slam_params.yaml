@@ -6,7 +6,11 @@ slam_toolbox:
 
     # 보고서 스펙: 5cm 격자 해상도
     resolution: 0.05
+<<<<<<< Updated upstream
     max_laser_range: 10.0
+=======
+    max_laser_range: 20.0
+>>>>>>> Stashed changes
     minimum_travel_distance: 0.1
     minimum_travel_heading: 0.1
     map_update_interval: 1.0
@@ -35,5 +39,9 @@ slam_toolbox:
     scan_topic: /scan
 
     # 저장
+<<<<<<< Updated upstream
     map_file_name: factory_map
+=======
+    map_file_name: ""
+>>>>>>> Stashed changes
     map_start_at_dock: false

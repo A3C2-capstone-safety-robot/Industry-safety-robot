@@ -1,7 +1,15 @@
 image: factory_map.pgm
 mode: trinary
+<<<<<<< Updated upstream
 resolution: 0.05
 origin: [0.0, 0.0, 0.0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.25
+=======
+resolution: 0.050
+origin: [-25.447, -8.086, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+>>>>>>> Stashed changes

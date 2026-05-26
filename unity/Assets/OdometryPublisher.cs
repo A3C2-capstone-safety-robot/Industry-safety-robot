@@ -28,9 +28,15 @@ public class OdometryPublisher : MonoBehaviour
         ros.RegisterPublisher<TFMessageMsg>("/tf");
     }
 
+<<<<<<< Updated upstream:unity/Assets/OdometryPublisher.cs
     void Update()
     {
         timer += Time.deltaTime;
+=======
+    void FixedUpdate()
+    {
+        timer += Time.fixedDeltaTime;
+>>>>>>> Stashed changes:Safety-Robot/Assets/OdometryPublisher.cs
         if (timer < 1f / publishHz) return;
         timer = 0f;
         Publish();

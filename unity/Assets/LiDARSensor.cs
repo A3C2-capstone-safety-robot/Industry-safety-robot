@@ -4,19 +4,35 @@ using Unity.Robotics.ROSTCPConnector;
 using RosMessageTypes.Sensor;
 using RosMessageTypes.Std;
 using System.Collections.Generic;
+<<<<<<< Updated upstream:unity/Assets/LiDARSensor.cs
+=======
+using System;
+using RosMessageTypes.BuiltinInterfaces;
+>>>>>>> Stashed changes:Safety-Robot/Assets/LiDARSensor.cs
 
 public class LiDARSensor : MonoBehaviour
 {
     [Header("LiDAR 스펙")]
+<<<<<<< Updated upstream:unity/Assets/LiDARSensor.cs
     public int numRays = 360;          // 레이 개수 (해상도)
     public float maxRange = 20f;       // 최대 측정 거리 (m)
     public float minRange = 0.1f;      // 최소 측정 거리 (m)
     public float scanFrequency = 10f;  // Hz
+=======
+    public int numRays = 180;          // 레이 개수 (해상도)
+    public float maxRange = 20f;       // 최대 측정 거리 (m)
+    public float minRange = 0.1f;      // 최소 측정 거리 (m)
+    public float scanFrequency = 5f;  // Hz
+>>>>>>> Stashed changes:Safety-Robot/Assets/LiDARSensor.cs
     public float verticalOffset = 0.3f; // 로봇 바닥에서 LiDAR까지 높이
 
     [Header("ROS 설정")]
     public string topicName = "/scan";
+<<<<<<< Updated upstream:unity/Assets/LiDARSensor.cs
     public string frameId = "lidar_link";
+=======
+    public string frameId = "base_scan";
+>>>>>>> Stashed changes:Safety-Robot/Assets/LiDARSensor.cs
 
     // 시각화 옵션 (Scene 뷰에서 레이 확인용)
     public bool showDebugRays = true;
@@ -94,12 +110,26 @@ public class LiDARSensor : MonoBehaviour
                     Debug.DrawRay(origin, direction * maxRange, missColor, 1f / scanFrequency);
             }
         }
+<<<<<<< Updated upstream:unity/Assets/LiDARSensor.cs
 
+=======
+        DateTimeOffset now = DateTimeOffset.UtcNow.AddMilliseconds(500);
+        int sec = (int)now.ToUnixTimeSeconds();
+        uint nanosec = (uint)((now.ToUnixTimeMilliseconds() % 1000) * 1000000);
+>>>>>>> Stashed changes:Safety-Robot/Assets/LiDARSensor.cs
         // LaserScan 메시지 구성
         var msg = new LaserScanMsg
         {
             header = new HeaderMsg
             {
+<<<<<<< Updated upstream:unity/Assets/LiDARSensor.cs
+=======
+                 stamp = new TimeMsg
+                {
+                    sec = sec,
+                    nanosec = nanosec
+                },
+>>>>>>> Stashed changes:Safety-Robot/Assets/LiDARSensor.cs
                 frame_id = frameId,
                 //stamp = RosUtil.GetCurrentTimeMsg()
             },

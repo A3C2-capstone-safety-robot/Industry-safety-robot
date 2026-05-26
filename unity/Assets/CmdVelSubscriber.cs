@@ -5,7 +5,11 @@ using RosMessageTypes.Geometry;
 public class CmdVelSubscriber : MonoBehaviour
 {
     [Header("ROS 설정")]
+<<<<<<< Updated upstream:unity/Assets/CmdVelSubscriber.cs
     public string topicName = "/cmd_vel";
+=======
+    public string topicName = "/cmd_vel_nav";
+>>>>>>> Stashed changes:Safety-Robot/Assets/CmdVelSubscriber.cs
 
     [Header("이동 설정")]
     public float linearSpeed = 2.0f;

@@ -133,3 +133,14 @@ ros2/log/
 .DS_Store
 Thumbs.db
 *.swp
+
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+.vs/
+
+Textures.zip

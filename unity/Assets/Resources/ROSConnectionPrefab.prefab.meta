@@ -1,5 +1,9 @@
 fileFormatVersion: 2
+<<<<<<< Updated upstream:unity/Assets/Resources/ROSConnectionPrefab.prefab.meta
 guid: d344e27111d376f49a276de6c8d76ee9
+=======
+guid: 6c6ab565db1343a4d8dcede92a16dc7f
+>>>>>>> Stashed changes:Safety-Robot/Assets/Resources/ROSConnectionPrefab.prefab.meta
 PrefabImporter:
   externalObjects: {}
   userData: 

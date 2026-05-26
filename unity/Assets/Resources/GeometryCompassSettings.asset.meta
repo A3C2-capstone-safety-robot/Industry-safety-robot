@@ -1,5 +1,9 @@
 fileFormatVersion: 2
+<<<<<<< Updated upstream:unity/Assets/Resources/GeometryCompassSettings.asset.meta
 guid: dc378f17435c3b546b330287083613b6
+=======
+guid: 40d7c1a29a37c81409fd9be9e68ec991
+>>>>>>> Stashed changes:Safety-Robot/Assets/Resources/GeometryCompassSettings.asset.meta
 NativeFormatImporter:
   externalObjects: {}
   mainObjectFileID: 11400000
