@@ -34,6 +34,7 @@ TEMP_MAX = 180.0
 MAP_FRAME = 'map'
 CAMERA_FRAME = 'thermal_camera_link'
 CAMERA_INFO_TOPIC = '/thermal/camera_info'
+LOG_PROJECTION_WARNINGS = False
 
 MACHINE_IDS = ['machine_1', 'machine_2', 'machine_3', 'machine_4']
 
@@ -69,10 +70,14 @@ class ThermalVisualizer(Node):
         self.declare_parameter('map_frame', MAP_FRAME)
         self.declare_parameter('camera_frame', CAMERA_FRAME)
         self.declare_parameter('camera_info_topic', CAMERA_INFO_TOPIC)
+        self.declare_parameter('log_projection_warnings', LOG_PROJECTION_WARNINGS)
 
         self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
         self.camera_frame = self.get_parameter('camera_frame').get_parameter_value().string_value
         self.camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
+        self.log_projection_warnings = (
+            self.get_parameter('log_projection_warnings').get_parameter_value().bool_value
+        )
 
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -105,7 +110,8 @@ class ThermalVisualizer(Node):
             f'ThermalVisualizer v5 ready '
             f'[FOV={FOV_DEG}°, f={_f:.1f}px, MultiBlob mode, '
             f'map_frame={self.map_frame}, camera_frame={self.camera_frame}, '
-            f'camera_info_topic={self.camera_info_topic}]'
+            f'camera_info_topic={self.camera_info_topic}, '
+            f'log_projection_warnings={self.log_projection_warnings}]'
         )
 
     # ── 콜백 ────────────────────────────────────────────────────────
@@ -205,10 +211,11 @@ class ThermalVisualizer(Node):
             pixel_list.append(center_px)
 
             if center_uv is None:
-                self.get_logger().warn(
-                    '중심점이 카메라 뒤에 있어 렌더링 건너뜀',
-                    throttle_duration_sec=2.0
-                )
+                if self.log_projection_warnings:
+                    self.get_logger().warn(
+                        '중심점이 카메라 뒤에 있어 렌더링 건너뜀',
+                        throttle_duration_sec=2.0
+                    )
                 continue
 
             if len(projected_pts) < 2:
@@ -221,12 +228,13 @@ class ThermalVisualizer(Node):
                     center_uv[0] < -margin_x or center_uv[0] > self.img_w + margin_x or
                     center_uv[1] < -margin_y or center_uv[1] > self.img_h + margin_y
                 ):
-                    self.get_logger().warn(
-                        f'중심점이 화면에서 너무 멀어 렌더링 건너뜀: '
-                        f'uv=({center_uv[0]:.1f}, {center_uv[1]:.1f}), '
-                        f'image=({self.img_w}, {self.img_h})',
-                        throttle_duration_sec=2.0
-                    )
+                    if self.log_projection_warnings:
+                        self.get_logger().warn(
+                            f'중심점이 화면에서 너무 멀어 렌더링 건너뜀: '
+                            f'uv=({center_uv[0]:.1f}, {center_uv[1]:.1f}), '
+                            f'image=({self.img_w}, {self.img_h})',
+                            throttle_duration_sec=2.0
+                        )
                     continue
 
             pts_arr = np.array(projected_pts)  # (N, 2)
