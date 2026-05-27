@@ -20,6 +20,7 @@ public class CameraPublisher : MonoBehaviour
     public int width = 320;
     public int height = 240;
     public float publishRate = 10f;
+    public bool logPublishing = false;
 
     [Header("TF 프레임 이름")]
     public string mapFrame = "map";
@@ -36,28 +37,32 @@ public class CameraPublisher : MonoBehaviour
 
     void Start()
     {
-        // 디버그 로그 추가 1
-        //Debug.Log("[CameraPublisher] Start() 진입 성공!");
+        if (robotCamera == null)
+        {
+            Debug.LogError("[CameraPublisher] robotCamera가 할당되지 않았습니다.", this);
+            enabled = false;
+            return;
+        }
+
         ros = ROSConnection.GetOrCreateInstance();
         ros.RegisterPublisher<ImageMsg>(imageTopic);
         ros.RegisterPublisher<CameraInfoMsg>(cameraInfoTopic);
         ros.RegisterPublisher<TFMessageMsg>(tfTopic);
 
-        // 오버플로우 방지를 위해 ARGB32 / RGBA32(픽셀당 4바이트)로 통일
         rt = new RenderTexture(width, height, 16, RenderTextureFormat.ARGB32);
-        readTex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        readTex = new Texture2D(width, height, TextureFormat.RGB24, false);
         robotCamera.targetTexture = rt;
+        robotCamera.enabled = false;
 
-        rowBytes = width * 4; // 픽셀당 4바이트 (RGBA)
-        rosData = new byte[width * height * 4];
+        rowBytes = width * 3;
+        rosData = new byte[width * height * 3];
 
-        // 1회성 고정 데이터 미리 세팅
         cachedImageMsg = new ImageMsg
         {
             header = new HeaderMsg { frame_id = cameraFrame },
             height = (uint)height,
             width = (uint)width,
-            encoding = "rgba8", // 인코딩을 rgba8로 변경
+            encoding = "rgb8",
             is_bigendian = 0,
             step = (uint)rowBytes,
             data = rosData
@@ -65,37 +70,28 @@ public class CameraPublisher : MonoBehaviour
 
         StartCoroutine(CaptureLoop());
         InvokeRepeating(nameof(PublishMeta), 1f, 1f / publishRate);
-
-        // 디버그 로그 추가 2
-        //Debug.Log("[CameraPublisher] Start() 셋업 완료 및 코루틴 시작!");
     }
 
     IEnumerator CaptureLoop()
     {
-        var eof = new WaitForEndOfFrame();
         float interval = 1f / publishRate;
         float next = Time.time + 1f;
 
-        // 디버그 로그 추가 3
-        //Debug.Log("[CameraPublisher] CaptureLoop 코루틴 정상 진입!");
-
         while (true)
         {
-            yield return eof;
+            yield return null;
+            if (Time.time < next)
+                continue;
 
-            if (Time.time < next) continue;
             next = Time.time + interval;
+            robotCamera.Render();
 
-            // 디버그 로그 추가 4 (이 로그가 콘솔에 계속 주기적으로 찍혀야 합니다)
-            //Debug.Log($"[CameraPublisher] 이미지 발행 중... 시간: {Time.time}");
-
-            // ── 텍스처 읽기 ──────────────────────────────────────────
+            RenderTexture previous = RenderTexture.active;
             RenderTexture.active = rt;
             readTex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
             readTex.Apply();
-            RenderTexture.active = null;
+            RenderTexture.active = previous;
 
-            // ── Y축 반전 행 단위 고속 복사 ───────────────────────────
             NativeArray<byte> raw = readTex.GetRawTextureData<byte>();
 
             for (int y = 0; y < height; y++)
@@ -105,10 +101,11 @@ public class CameraPublisher : MonoBehaviour
                 NativeArray<byte>.Copy(raw, srcRow, rosData, dstRow, rowBytes);
             }
 
-            // 타임스탬프만 변경 후 발행 (가비지 프리)
             cachedImageMsg.header.stamp = GetStamp();
-            //Debug.Log($"[CameraPublisher] ros.Publish 호출: {imageTopic}");
             ros.Publish(imageTopic, cachedImageMsg);
+
+            if (logPublishing)
+                Debug.Log($"[CameraPublisher] Published image: {imageTopic}", this);
         }
     }
 
@@ -171,10 +168,11 @@ public class CameraPublisher : MonoBehaviour
 
     RosMessageTypes.BuiltinInterfaces.TimeMsg GetStamp()
     {
+        long ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         return new RosMessageTypes.BuiltinInterfaces.TimeMsg
         {
-            sec = (int)Time.time,
-            nanosec = (uint)((Time.time - (int)Time.time) * 1e9f)
+            sec = (int)(ms / 1000),
+            nanosec = (uint)(ms % 1000 * 1_000_000)
         };
     }
 

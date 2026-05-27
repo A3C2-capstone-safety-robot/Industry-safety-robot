@@ -31,8 +31,9 @@ DEFAULT_K = np.array([
 TEMP_MIN = 40.0
 TEMP_MAX = 180.0
 
-MAP_FRAME    = 'map'
-CAMERA_FRAME = 'camera_frame'
+MAP_FRAME = 'map'
+CAMERA_FRAME = 'thermal_camera_link'
+CAMERA_INFO_TOPIC = '/thermal/camera_info'
 
 MACHINE_IDS = ['machine_1', 'machine_2', 'machine_3', 'machine_4']
 
@@ -53,6 +54,8 @@ FINAL_BLUR_K = 15
 
 # extents 축소 비율
 EXTENTS_SCALE = 0.35
+MAX_SIGMA_RATIO = 0.18
+OFFSCREEN_MARGIN_RATIO = 0.5
 
 
 # ══════════════════════════════════════════════════════
@@ -62,10 +65,21 @@ class ThermalVisualizer(Node):
         super().__init__('thermal_visualizer')
         self.bridge = CvBridge()
 
+        # Allow overriding frame and topic names via ROS parameters
+        self.declare_parameter('map_frame', MAP_FRAME)
+        self.declare_parameter('camera_frame', CAMERA_FRAME)
+        self.declare_parameter('camera_info_topic', CAMERA_INFO_TOPIC)
+
+        self.map_frame = self.get_parameter('map_frame').get_parameter_value().string_value
+        self.camera_frame = self.get_parameter('camera_frame').get_parameter_value().string_value
+        self.camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
+
         self.tf_buffer   = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         self.K = DEFAULT_K.copy()
+        self.img_w = IMG_W
+        self.img_h = IMG_H
 
         self.machine_boxes: list = []
         self.temperatures:  list = []
@@ -76,8 +90,9 @@ class ThermalVisualizer(Node):
         self.create_subscription(
             Float32MultiArray, '/machine_world_positions',
             self.on_positions, 10)
+        # Subscribe to CameraInfo topic specified by parameter
         self.create_subscription(
-            CameraInfo, '/camera/camera_info',
+            CameraInfo, self.camera_info_topic,
             self.on_camera_info, 10)
 
         self.pub = self.create_publisher(Image, '/thermal_image', 10)
@@ -88,7 +103,9 @@ class ThermalVisualizer(Node):
 
         self.get_logger().info(
             f'ThermalVisualizer v5 ready '
-            f'[FOV={FOV_DEG}°, f={_f:.1f}px, MultiBlob mode]'
+            f'[FOV={FOV_DEG}°, f={_f:.1f}px, MultiBlob mode, '
+            f'map_frame={self.map_frame}, camera_frame={self.camera_frame}, '
+            f'camera_info_topic={self.camera_info_topic}]'
         )
 
     # ── 콜백 ────────────────────────────────────────────────────────
@@ -109,6 +126,9 @@ class ThermalVisualizer(Node):
     def on_camera_info(self, msg: CameraInfo):
         if len(msg.k) == 9:
             self.K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
+        if msg.width > 0 and msg.height > 0:
+            self.img_w = int(msg.width)
+            self.img_h = int(msg.height)
 
     # ── 렌더 ────────────────────────────────────────────────────────
     def render(self):
@@ -117,7 +137,7 @@ class ThermalVisualizer(Node):
 
         try:
             tf_stamped = self.tf_buffer.lookup_transform(
-                CAMERA_FRAME, MAP_FRAME,
+                self.camera_frame, self.map_frame,
                 rclpy.time.Time(),
                 timeout=rclpy.duration.Duration(seconds=0.05)
             )
@@ -131,9 +151,8 @@ class ThermalVisualizer(Node):
         ppx, ppy = self.K[0, 2], self.K[1, 2]
 
         # 누적 heat map (float32, 0~1)
-        heat_accum = np.zeros((IMG_H, IMG_W), dtype=np.float32)
+        heat_accum = np.zeros((self.img_h, self.img_w), dtype=np.float32)
         pixel_list = []
-
         for i, ((cx, cy, cz), (ex, ey, ez)) in enumerate(self.machine_boxes):
             if i >= len(self.temperatures):
                 break
@@ -158,10 +177,12 @@ class ThermalVisualizer(Node):
             # ── 투영 ──────────────────────────────────────────────────
             projected_pts = []
             center_px = None
+            center_uv = None
+            center_cam = None
 
             for j, (wx, wy, wz) in enumerate(points_map):
                 pt_w = PointStamped()
-                pt_w.header.frame_id = MAP_FRAME
+                pt_w.header.frame_id = self.map_frame
                 pt_w.point.x, pt_w.point.y, pt_w.point.z = wx, wy, wz
                 pt_c = tf2_geometry_msgs.do_transform_point(pt_w, tf_stamped)
 
@@ -177,12 +198,36 @@ class ThermalVisualizer(Node):
                 projected_pts.append((u, v))
 
                 if j == 0:
+                    center_cam = (pt_c.point.x, pt_c.point.y, pt_c.point.z)
+                    center_uv = (u, v)
                     center_px = (int(u), int(v))
 
             pixel_list.append(center_px)
 
+            if center_uv is None:
+                self.get_logger().warn(
+                    '중심점이 카메라 뒤에 있어 렌더링 건너뜀',
+                    throttle_duration_sec=2.0
+                )
+                continue
+
             if len(projected_pts) < 2:
                 continue
+
+            if center_uv is not None:
+                margin_x = self.img_w * OFFSCREEN_MARGIN_RATIO
+                margin_y = self.img_h * OFFSCREEN_MARGIN_RATIO
+                if (
+                    center_uv[0] < -margin_x or center_uv[0] > self.img_w + margin_x or
+                    center_uv[1] < -margin_y or center_uv[1] > self.img_h + margin_y
+                ):
+                    self.get_logger().warn(
+                        f'중심점이 화면에서 너무 멀어 렌더링 건너뜀: '
+                        f'uv=({center_uv[0]:.1f}, {center_uv[1]:.1f}), '
+                        f'image=({self.img_w}, {self.img_h})',
+                        throttle_duration_sec=2.0
+                    )
+                    continue
 
             pts_arr = np.array(projected_pts)  # (N, 2)
 
@@ -190,10 +235,11 @@ class ThermalVisualizer(Node):
             span_u = pts_arr[:, 0].max() - pts_arr[:, 0].min()
             span_v = pts_arr[:, 1].max() - pts_arr[:, 1].min()
             base_sigma = max(span_u, span_v) * BLOB_SIGMA_RATIO
-            base_sigma = max(base_sigma, 8.0)  # 최소 sigma
+            max_sigma = max(self.img_w, self.img_h) * MAX_SIGMA_RATIO
+            base_sigma = float(np.clip(base_sigma, 8.0, max_sigma))
 
             # ── 각 포인트에 가우시안 블롭 배치 ───────────────────────
-            center_proj = projected_pts[0]  # 첫 번째가 중심
+            center_proj = center_uv
             corner_projs = projected_pts[1:]
 
             # 중심 블롭 (더 크고 강하게)
@@ -225,7 +271,7 @@ class ThermalVisualizer(Node):
             if pix is None or i >= len(self.temperatures):
                 continue
             u, v = pix
-            if not (0 <= u < IMG_W and 0 <= v < IMG_H):
+            if not (0 <= u < self.img_w and 0 <= v < self.img_h):
                 continue
             t    = self.temperatures[i]
             name = MACHINE_IDS[i] if i < len(MACHINE_IDS) else f'M{i+1}'
@@ -239,7 +285,7 @@ class ThermalVisualizer(Node):
 
         img_msg = self.bridge.cv2_to_imgmsg(colormap, encoding='bgr8')
         img_msg.header.stamp    = self.get_clock().now().to_msg()
-        img_msg.header.frame_id = CAMERA_FRAME
+        img_msg.header.frame_id = self.camera_frame
         self.pub.publish(img_msg)
 
     # ── 가우시안 블롭 추가 ───────────────────────────────────────────

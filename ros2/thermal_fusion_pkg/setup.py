@@ -24,6 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'thermal_visualizer = thermal_fusion_pkg.thermal_visualizer_node:main',
+            'image_fusion = thermal_fusion_pkg.image_fusion_node:main',
         ],
-    },
+    }
 )

@@ -26,9 +26,18 @@ class ImageFusionNode(Node):
         self.latest_rgb = None
         self.latest_thermal = None
 
-        self.create_subscription(Image, '/camera/image_raw',  self._on_rgb,     10)
-        self.create_subscription(Image, '/thermal_image',     self._on_thermal, 10)
-        self.pub = self.create_publisher(Image, '/fused_image', 10)
+        # Allow topic names to be overridden via ROS parameters
+        self.declare_parameter('rgb_topic', '/camera/image_raw')
+        self.declare_parameter('thermal_topic', '/thermal_image')
+        self.declare_parameter('fused_topic', '/fused_image')
+
+        self.rgb_topic = self.get_parameter('rgb_topic').get_parameter_value().string_value
+        self.thermal_topic = self.get_parameter('thermal_topic').get_parameter_value().string_value
+        self.fused_topic = self.get_parameter('fused_topic').get_parameter_value().string_value
+
+        self.create_subscription(Image, self.rgb_topic,  self._on_rgb,     10)
+        self.create_subscription(Image, self.thermal_topic, self._on_thermal, 10)
+        self.pub = self.create_publisher(Image, self.fused_topic, 10)
         self.create_timer(0.1, self._fuse)
         self.get_logger().info('ImageFusion v3 ready [Blue NV + Smooth Blend]')
 
