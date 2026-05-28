@@ -161,13 +161,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GaussianPlumeModel
   gasType: 1
   leakSource: {fileID: 8337240511466168260}
-  emissionRate: 120
+  emissionRate: 150
   windDirection: {x: 1, y: 0}
   windSpeed: 1.5
-  sigmaBase: 0.6
-  sigmaGrowth: 0.08
+  sigmaBase: 4
+  sigmaGrowth: 0.15
   verticalSpeed: 0.5
-  verticalSigma: 0.5
+  verticalSigma: 2
   alertThreshold: 5000
   dangerThreshold: 25000
   leakStartTime: -1
@@ -289,7 +289,7 @@ ParticleSystem:
     startLifetime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 40
+      scalar: 20
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -460,7 +460,7 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 0.5
+      scalar: 2
       minScalar: 1
       maxCurve:
         serializedVersion: 2
@@ -3792,7 +3792,7 @@ ParticleSystem:
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
   CollisionModule:
-    enabled: 1
+    enabled: 0
     serializedVersion: 4
     type: 1
     collisionMode: 0
@@ -5022,3 +5022,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GasVisualizer
   plumeModel: {fileID: 7984142869014368875}
+  verticalScale: 0.3

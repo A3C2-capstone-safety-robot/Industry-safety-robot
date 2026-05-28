@@ -1092,7 +1092,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -7.14
+      value: -8
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalPosition.y
@@ -1100,7 +1100,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -9.53
+      value: -9.3
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1174,6 +1174,15 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
       insertIndex: -1
       addedObject: {fileID: 221095399}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 221095401}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 221095400}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 221095402}
   m_SourcePrefab: {fileID: 100100000, guid: 3ba1541c4bc6cdc4e82d57de03aec015, type: 3}
 --- !u!1 &221095394 stripped
 GameObject:
@@ -1290,6 +1299,69 @@ MonoBehaviour:
   bodyRadius: 0.18
   bodyBottom: 0.08
   bodyTop: 0.45
+--- !u!114 &221095400
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 221095394}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73cc3b0cc6488264aab6e369e6da61e2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MothSearchAlgorithm
+  gasSensor: {fileID: 221095401}
+  useDirectMovement: 0
+  moveSpeed: 2
+  rotateSpeed: 120
+  navGoalTopic: /goal_pose
+  goalPublishRate: 1
+  surgeStepSize: 2
+  castStepSize: 1.5
+  maxCastSteps: 6
+  spiralRadius: 0.5
+  spiralGrowth: 0.3
+  sourceThreshold: 95
+  detectionThreshold: 1
+  highConcThreshold: 92
+  sampleDistance: 1.5
+  sampleDirections: 8
+  currentState: 0
+  debugConcentration: 0
+  debugGradient: {x: 0, y: 0, z: 0}
+--- !u!114 &221095401
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 221095394}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60aba531391bade4b8dea19feb185d92, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VirtualGasSensor
+  sensorRate: 5
+  noiseLevel: 2
+  concentrationTopic: /gas_concentration
+  alertTopic: /gas_alert
+--- !u!114 &221095402
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 221095394}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6386c074f6fb93c45915333e93405113, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CmdVelSubscriber
+  topicName: /cmd_vel
+  linearSpeedScale: 1
+  angularSpeedScale: 1
+  suppressMovement: 0
 --- !u!1 &230477599
 GameObject:
   m_ObjectHideFlags: 0
@@ -2859,6 +2931,60 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 8270986963681008907, guid: e3373ea929d3f3d4daf445b56dd08a94, type: 3}
   m_PrefabInstance: {fileID: 551855497}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &593126920
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 593126922}
+  - component: {fileID: 593126921}
+  m_Layer: 0
+  m_Name: GasHeatmap
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &593126921
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 593126920}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8629f6131d49fac40b86ff0bdb81af66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GasHeatmap
+  centerPosition: {x: 0, y: 0, z: 0}
+  areaSize: 40
+  heightOffset: 0.05
+  resolution: 128
+  updateInterval: 0.5
+  minConcentration: 1
+  maxConcentration: 100
+  showHeatmap: 1
+  opacity: 0.5
+  toggleKey: 104
+--- !u!4 &593126922
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 593126920}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &595970286 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 8818935253528242402, guid: 27eb86d4a050527478ec32cd3f1ef7c9, type: 3}
@@ -3965,6 +4091,18 @@ PrefabInstance:
     - target: {fileID: 4446686660741974, guid: ef88eb88f02ef884aa69191f15c9aca5, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 56756944502192847, guid: ef88eb88f02ef884aa69191f15c9aca5, type: 3}
+      propertyPath: CollisionModule.enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 56756944502192847, guid: ef88eb88f02ef884aa69191f15c9aca5, type: 3}
+      propertyPath: CollisionModule.quality
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8395261006143660733, guid: ef88eb88f02ef884aa69191f15c9aca5, type: 3}
+      propertyPath: m_Name
+      value: GasLeakPoint_1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -7304,6 +7442,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4919925243036249963, guid: fb282f302e96ea24686dda923bf8cb72, type: 3}
+      propertyPath: m_Name
+      value: GasLeakPoint_2
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -7718,6 +7860,10 @@ PrefabInstance:
     - target: {fileID: 4446686660741974, guid: ef88eb88f02ef884aa69191f15c9aca5, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8395261006143660733, guid: ef88eb88f02ef884aa69191f15c9aca5, type: 3}
+      propertyPath: m_Name
+      value: GasLeakPoint_3
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -8379,6 +8525,56 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 336343109559671598, guid: db1144b055632594fb50ea735cc3c5b0, type: 3}
+--- !u!1 &2129741518
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2129741520}
+  - component: {fileID: 2129741519}
+  m_Layer: 0
+  m_Name: GasLeakManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2129741519
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2129741518}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c4663ac0972ac449a80d41cf9764363, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GasLeakManager
+  enableRandomLeak: 1
+  randomLeakMinInterval: 30
+  randomLeakMaxInterval: 120
+  randomLeakDuration: 60
+  showUI: 1
+  toggleUIKey: 9
+--- !u!4 &2129741520
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2129741518}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: -1.892, y: 0, z: -9.968}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2132679061 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 9006478078952959991, guid: 27eb86d4a050527478ec32cd3f1ef7c9, type: 3}
@@ -8414,6 +8610,8 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 120290448}
   - {fileID: 292001975}
+  - {fileID: 2129741520}
+  - {fileID: 593126922}
   - {fileID: 1228966085}
   - {fileID: 330585546}
   - {fileID: 1859827518}
