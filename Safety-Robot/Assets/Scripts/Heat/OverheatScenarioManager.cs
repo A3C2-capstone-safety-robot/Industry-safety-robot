@@ -30,13 +30,13 @@ public class OverheatScenarioManager : MonoBehaviour
     {
         ros = ROSConnection.GetOrCreateInstance();
         ros.RegisterPublisher<Float32MultiArrayMsg>(tempTopicName);
-        ros.RegisterPublisher<StringMsg>(alertTopicName);
-
+        
         if (autoTrigger)
             StartCoroutine(AutoOverheatRoutine());
 
         InvokeRepeating(nameof(PublishTemperatures), 1f, 1f / publishRate);
     }
+    
 
     IEnumerator AutoOverheatRoutine()
     {
@@ -60,43 +60,58 @@ public class OverheatScenarioManager : MonoBehaviour
         }
     }
 
+    // PublishTemperatures() 수정
     void PublishTemperatures()
     {
-        // 노이즈가 적용된 온도값 발행
-        var msg = new Float32MultiArrayMsg();
-        msg.data = machines.Select(m => m.GetNoisyTemp()).ToArray();
-        ros.Publish(tempTopicName, msg);
+        if (machines == null || machines.Length == 0) return;
 
-        // Normal 제외 3단계 모두 경보 발행
-        foreach (var m in machines)
+        float[] data = new float[machines.Length];
+        for (int i = 0; i < machines.Length; i++)
         {
-            if (m.Status == MachineHeat.HeatStatus.Normal) continue;
-
-            string level = m.Status switch
-            {
-                MachineHeat.HeatStatus.Caution => "[주의]",
-                MachineHeat.HeatStatus.Warning => "[경고]",
-                MachineHeat.HeatStatus.Danger  => "[위험]",
-                _                              => "[정보]"
-            };
-
-            var alert = new StringMsg
-            {
-                data = $"{level} {m.machineId}: {m.GetNoisyTemp():F1}°C — {GetActionGuide(m.Status)}"
-            };
-            ros.Publish(alertTopicName, alert);
-
-            // 탐지 지연 시간 최초 1회 로그
-            if (!latencyLogged && overheatStartTime >= 0 &&
-                System.Array.IndexOf(machines, m) == overheatMachineIdx)
-            {
-                float latency = Time.time - overheatStartTime;
-                Debug.Log($"[지연측정] {m.machineId} 경보 발행 지연: {latency * 1000:F1}ms " +
-                          $"(목표: 1000ms 이내)");
-                latencyLogged = true;
-            }
+            data[i] = machines[i].GetNoisyTemp();
         }
+
+        var msg = new Float32MultiArrayMsg { data = data };
+        ros.Publish(tempTopicName, msg);
     }
+
+    // void PublishTemperatures()
+    // {
+    //     // 노이즈가 적용된 온도값 발행
+    //     var msg = new Float32MultiArrayMsg();
+    //     msg.data = machines.Select(m => m.GetNoisyTemp()).ToArray();
+    //     ros.Publish(tempTopicName, msg);
+
+    //     // Normal 제외 3단계 모두 경보 발행
+    //     foreach (var m in machines)
+    //     {
+    //         if (m.Status == MachineHeat.HeatStatus.Normal) continue;
+
+    //         string level = m.Status switch
+    //         {
+    //             MachineHeat.HeatStatus.Caution => "[주의]",
+    //             MachineHeat.HeatStatus.Warning => "[경고]",
+    //             MachineHeat.HeatStatus.Danger  => "[위험]",
+    //             _                              => "[정보]"
+    //         };
+
+    //         var alert = new StringMsg
+    //         {
+    //             data = $"{level} {m.machineId}: {m.GetNoisyTemp():F1}°C — {GetActionGuide(m.Status)}"
+    //         };
+    //         ros.Publish(alertTopicName, alert);
+
+    //         // 탐지 지연 시간 최초 1회 로그
+    //         if (!latencyLogged && overheatStartTime >= 0 &&
+    //             System.Array.IndexOf(machines, m) == overheatMachineIdx)
+    //         {
+    //             float latency = Time.time - overheatStartTime;
+    //             Debug.Log($"[지연측정] {m.machineId} 경보 발행 지연: {latency * 1000:F1}ms " +
+    //                       $"(목표: 1000ms 이내)");
+    //             latencyLogged = true;
+    //         }
+    //     }
+    // }
 
     string GetActionGuide(MachineHeat.HeatStatus status) => status switch
     {

@@ -4,21 +4,21 @@ from rclpy.node import Node
 import cv2
 import numpy as np
 from sensor_msgs.msg import Image
+from std_msgs.msg import Float32MultiArray, String
 from cv_bridge import CvBridge
 
 
 class ImageFusionNode(Node):
 
-    # ── 합성 파라미터 ──────────────────────────────────────────────
-    # 열화상 최대 불투명도 (0.0~1.0)
-    # 중심(뜨거운 곳)은 이 값, 경계는 강도에 비례해 낮아짐
+    # ── 합성 파라미터 (원본 유지) ───────────────────────────────────
     THERMAL_ALPHA = 0.72
-
-    # 배경 파란색 틴트 강도 (0.0 = 순수 흑백, 1.0 = 강한 파랑)
     BLUE_TINT = 0.55
-
-    # 파랑 배경 밝기 스케일 (1.0 = 원본 밝기 유지, 0.7 = 약간 어둡게)
     BG_BRIGHTNESS = 0.78
+
+    # ── 과열 감지 임계값 (Unity 기준과 동기화) ──────────────────────────
+    CAUTION_THRES = 80.0
+    WARNING_THRES = 100.0
+    DANGER_THRES  = 120.0
 
     def __init__(self):
         super().__init__('image_fusion')
@@ -26,20 +26,20 @@ class ImageFusionNode(Node):
         self.latest_rgb = None
         self.latest_thermal = None
 
-        # Allow topic names to be overridden via ROS parameters
-        self.declare_parameter('rgb_topic', '/camera/image_raw')
-        self.declare_parameter('thermal_topic', '/thermal_image')
-        self.declare_parameter('fused_topic', '/fused_image')
-
-        self.rgb_topic = self.get_parameter('rgb_topic').get_parameter_value().string_value
-        self.thermal_topic = self.get_parameter('thermal_topic').get_parameter_value().string_value
-        self.fused_topic = self.get_parameter('fused_topic').get_parameter_value().string_value
-
-        self.create_subscription(Image, self.rgb_topic,  self._on_rgb,     10)
-        self.create_subscription(Image, self.thermal_topic, self._on_thermal, 10)
-        self.pub = self.create_publisher(Image, self.fused_topic, 10)
+        # ── 구독 및 발행 정의 ─────────────────────────────────────────
+        self.create_subscription(Image, '/camera/image_raw',  self._on_rgb,     10)
+        self.create_subscription(Image, '/thermal_image',     self._on_thermal, 10)
+        
+        # 1. Unity로부터 실시간 센서 온도 배열 구독
+        self.create_subscription(Float32MultiArray, '/machine_temperatures', self._on_temperatures, 10)
+        
+        # 2. 로봇 자율 위험 판단용 얼럿 토픽 퍼블리셔
+        self.alert_pub = self.create_publisher(String, '/thermal_alerts', 10)
+        
+        self.pub = self.create_publisher(Image, '/fused_image', 10)
+        
         self.create_timer(0.1, self._fuse)
-        self.get_logger().info('ImageFusion v3 ready [Blue NV + Smooth Blend]')
+        self.get_logger().info('ImageFusion Node Ready [HUD Graph & Alert Publisher Fully Integrated]')
 
     def _on_rgb(self, msg):
         self.latest_rgb = msg
@@ -47,74 +47,88 @@ class ImageFusionNode(Node):
     def _on_thermal(self, msg):
         self.latest_thermal = msg
 
+    # ── 로봇 자율 과열 감지 및 토픽 발행 콜백 함수 ──────────────────────
+    def _on_temperatures(self, msg):
+        if not msg.data:
+            return
+
+        # 전체 설비 중 최고 온도 추출
+        max_temp = max(msg.data)
+        
+        # 온도별 행동 지침 문자열 판정
+        guide_text = "정상 가동 상태"
+
+        if max_temp >= self.DANGER_THRES:
+            guide_text = "즉시 점검 및 대피 검토"
+        elif max_temp >= self.WARNING_THRES:
+            guide_text = "점검 요원 파견 권고"
+        elif max_temp >= self.CAUTION_THRES:
+            guide_text = "모니터링 강화 필요"
+
+        # /thermal_alerts 토픽 백그라운드 발행
+        alert_msg = String()
+        alert_msg.data = guide_text
+        self.alert_pub.publish(alert_msg)
+
     def _fuse(self):
         if self.latest_rgb is None or self.latest_thermal is None:
             return
 
-        try:
-            rgb_rgba = self.bridge.imgmsg_to_cv2(self.latest_rgb, desired_encoding='rgba8')
-            rgb = cv2.cvtColor(rgb_rgba, cv2.COLOR_RGBA2BGR)
-            thermal = self.bridge.imgmsg_to_cv2(self.latest_thermal, desired_encoding='bgr8')
-        except Exception as e:
-            self.get_logger().warn(f'이미지 변환 실패: {e}')
-            return
+        rgb_img = self.bridge.imgmsg_to_cv2(self.latest_rgb, desired_encoding='bgr8')
+        thermal_img = self.bridge.imgmsg_to_cv2(self.latest_thermal, desired_encoding='bgr8')
 
-        if thermal.shape[:2] != rgb.shape[:2]:
-            thermal = cv2.resize(thermal, (rgb.shape[1], rgb.shape[0]),
-                                 interpolation=cv2.INTER_LINEAR)
+        if rgb_img.shape != thermal_img.shape:
+            thermal_img = cv2.resize(thermal_img, (rgb_img.shape[1], rgb_img.shape[0]))
 
-        # ── 파란색 야간투시 배경 만들기 ───────────────────────────
-        gray = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        # ── 배경 Blue NV 처리 ───────────────────────────────────
+        bg_gray = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2GRAY)
+        bg_blue = cv2.merge([
+            (bg_gray * self.BG_BRIGHTNESS * (1.0 + self.BLUE_TINT)).clip(0, 255).astype(np.uint8),
+            (bg_gray * self.BG_BRIGHTNESS * (1.0 - self.BLUE_TINT)).clip(0, 255).astype(np.uint8),
+            (bg_gray * self.BG_BRIGHTNESS * (1.0 - self.BLUE_TINT)).clip(0, 255).astype(np.uint8)
+        ])
 
-        # BGR 채널별로 파란 틴트 적용
-        # Blue 채널: 원본 gray + 파랑 부스트
-        # Green 채널: gray 약하게
-        # Red 채널: gray 더 약하게 (전체적으로 차갑고 푸른 느낌)
-        t = self.BLUE_TINT
-        b_ch = np.clip(gray * (0.6 + t * 0.5) + t * 35.0, 0, 255)
-        g_ch = np.clip(gray * (0.7 - t * 0.15), 0, 255)
-        r_ch = np.clip(gray * (0.55 - t * 0.25), 0, 255)
-
-        bg_blue = np.stack([b_ch, g_ch, r_ch], axis=2).astype(np.float32)
-        bg_blue *= self.BG_BRIGHTNESS
-
-        # ── 열화상 픽셀별 알파 맵 ─────────────────────────────────
-        thermal_f = thermal.astype(np.float32)
-
-        # 열화상 강도: 각 픽셀의 총 밝기 (0 = 배경검정, 높을수록 뜨거움)
-        intensity = thermal_f.sum(axis=2)
-
-        # 부드러운 알파 전환: sqrt로 낮은 강도도 어느정도 보이게
-        alpha_map = np.clip(intensity / (255.0 * 3.0 * 0.35), 0.0, 1.0)
-        alpha_map = np.sqrt(alpha_map)                      # 0→0, 1→1, 감마 보정
+        # ── 알파 맵 연산 ──────────────────────────────────────────
+        thermal_f = thermal_img.astype(np.float32)
+        gray_thermal = cv2.cvtColor(thermal_img, cv2.COLOR_BGR2GRAY)
+        alpha_map = np.clip(gray_thermal / (255.0 * 3.0 * 0.35), 0.0, 1.0)
+        alpha_map = np.sqrt(alpha_map)
         alpha_map = (alpha_map * self.THERMAL_ALPHA)[:, :, np.newaxis]
 
-        # ── 알파 블렌딩 ───────────────────────────────────────────
+        # ── 알파 블렌딩 및 출력 ────────────────────────────────────
         fused = (thermal_f * alpha_map + bg_blue * (1.0 - alpha_map)).astype(np.uint8)
 
-        # ── HUD 부착 ──────────────────────────────────────────────
-        fused = self._draw_hud(fused)
+        # ── [복원] 상단 범례(HUD Legend) 그리기 로직 ───────────────────────
+        fused = self._draw_origin_hud_legend(fused)
 
         out_msg = self.bridge.cv2_to_imgmsg(fused, encoding='bgr8')
         out_msg.header.stamp = self.get_clock().now().to_msg()
         out_msg.header.frame_id = self.latest_rgb.header.frame_id
         self.pub.publish(out_msg)
 
-    @staticmethod
-    def _draw_hud(img: np.ndarray) -> np.ndarray:
+    # 원본 이미지 상단 범례 그리기 함수 정의
+    def _draw_origin_hud_legend(self, img: np.ndarray) -> np.ndarray:
+        # 상단 검은색 바 배경 투명 처리 또는 사각형 생성
+        cv2.rectangle(img, (0, 0), (img.shape[1], 35), (15, 15, 15), -1)
+
+        # 범례 데이터 (색상 배열은 BGR 구조)
         legends = [
-            ('NORMAL',  (0, 200,   0)),
-            ('CAUTION', (0, 255, 255)),
-            ('WARNING', (0, 140, 255)),
-            ('DANGER',  (0,   0, 255)),
+            {"text": "NORMAL",  "color": (0, 180, 0)},     # 진녹색
+            {"text": "CAUTION", "color": (0, 240, 240)},   # 노란색
+            {"text": "WARNING", "color": (0, 120, 255)},   # 주황색
+            {"text": "DANGER",  "color": (0, 0, 245)}      # 빨간색
         ]
-        x = 10
-        for label, color in legends:
-            cv2.rectangle(img, (x, 6), (x + 14, 20), color, -1)
-            cv2.putText(img, label, (x + 18, 18),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4,
-                        (255, 255, 255), 1, cv2.LINE_AA)
-            x += 95
+
+        start_x = 12
+        for leg in legends:
+            # 색상 네모 그리기
+            cv2.rectangle(img, (start_x, 11), (start_x + 18, 25), leg["color"], -1)
+            # 텍스트 라벨 매핑 (영문이므로 깨지지 않음)
+            cv2.putText(img, leg["text"], (start_x + 24, 22), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, (230, 230, 230), 1, cv2.LINE_AA)
+            # 다음 범례를 위한 x 좌표 간격 띄우기
+            start_x += 105
+
         return img
 
 
