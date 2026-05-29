@@ -50,41 +50,42 @@ public class GaussianPlumeModel : MonoBehaviour
         switch (type)
         {
             case GasType.H2S:
-                // 황화수소: 무거움 → 바닥으로 가라앉음, 느리게 확산
-                emissionRate = 80f;
+                // 황화수소: 무거움 → 바닥으로 가라앉음
+                emissionRate = 100f;        // 누출원 바로 옆 최대 농도 (ppm)
                 verticalSpeed = -0.3f;      // 하강
-                verticalSigma = 0.2f;       // Y축 확산 좁음 (바닥에 깔림)
-                sigmaBase = 0.4f;           // 초기 확산 좁음
-                sigmaGrowth = 0.03f;        // 느리게 퍼짐
-                alertThreshold = 10f;       // 10 ppm (냄새 감지)
-                dangerThreshold = 100f;     // 100 ppm (IDLH)
+                verticalSigma = 1.5f;       // Y축 확산
+                sigmaBase = 5f;             // 초기 확산 반경 (m) — 5m 밖부터 급감
+                sigmaGrowth = 0.3f;         // 시간에 따라 반경 증가 (m/s)
+                alertThreshold = 10f;       // 10 ppm
+                dangerThreshold = 50f;      // 50 ppm
                 break;
 
             case GasType.LNG:
                 // 메탄: 가벼움 → 위로 상승, 빠르게 확산
                 emissionRate = 120f;
                 verticalSpeed = 0.5f;       // 상승
-                verticalSigma = 0.5f;       // Y축 넓게 퍼짐
-                sigmaBase = 0.6f;           // 초기 확산 넓음
-                sigmaGrowth = 0.08f;        // 빠르게 퍼짐
-                alertThreshold = 5000f;     // LEL 10% (50000 ppm의 10%)
+                verticalSigma = 2f;         // Y축 넓게
+                sigmaBase = 6f;             // 넓은 확산 반경
+                sigmaGrowth = 0.4f;         // 빠르게 퍼짐
+                alertThreshold = 5000f;     // LEL 10%
                 dangerThreshold = 25000f;   // LEL 50%
                 break;
 
             case GasType.NH3:
-                // 암모니아: 약간 가벼움 → 살짝 상승, 중간 속도 확산
-                emissionRate = 100f;
+                // 암모니아: 약간 가벼움 → 살짝 상승
+                emissionRate = 110f;
                 verticalSpeed = 0.15f;      // 약간 상승
-                verticalSigma = 0.4f;       // 중간 Y축 확산
-                sigmaBase = 0.5f;           // 중간 초기 확산
-                sigmaGrowth = 0.05f;        // 중간 속도
-                alertThreshold = 25f;       // 25 ppm (냄새 감지)
-                dangerThreshold = 300f;     // 300 ppm (IDLH)
+                verticalSigma = 1.8f;       // 중간 Y축 확산
+                sigmaBase = 5.5f;           // 중간 확산 반경
+                sigmaGrowth = 0.35f;        // 중간 속도
+                alertThreshold = 25f;       // 25 ppm
+                dangerThreshold = 150f;     // 150 ppm
                 break;
         }
     }
 
-    // 3D 농도 계산 (Y축 포함)
+    // 3D 농도 계산 — 연속 방출 플룸 모델
+    // 누출원에서 가까울수록 농도가 높고, 멀어질수록 급격히 감소
     public float GetConcentration(float x, float y, float z)
     {
         if (!isLeaking || leakSource == null) return 0f;
@@ -92,28 +93,34 @@ public class GaussianPlumeModel : MonoBehaviour
         float elapsed = Time.time - leakStartTime;
         if (elapsed <= 0f) return 0f;
 
-        // 가스 구름 중심: XZ 평면에서 바람 방향으로 이동
+        Vector3 src = leakSource.position;
+
+        // 누출원에서의 직선 거리
+        float dx = x - src.x;
+        float dz = z - src.z;
+        float dist = Mathf.Sqrt(dx * dx + dz * dz);
+
+        // 시간에 따른 플룸 성장 (5초에 걸쳐 서서히 확대)
+        float timeFactor = Mathf.Clamp01(elapsed / 5f);
+
+        // 확산 반경: 시간에 따라 천천히 커짐
+        float sigma = sigmaBase + sigmaGrowth * Mathf.Min(elapsed, 20f);
+
+        // ★ 핵심: 거리에 따른 지수 감쇠 (가까울수록 높고, 멀수록 급격히 감소)
+        float distConc = emissionRate * Mathf.Exp(-dist * dist / (2f * sigma * sigma));
+
+        // 바람 방향 보너스 (풍하 쪽이 약간 더 높음)
         Vector2 windNorm = windDirection.normalized;
-        float cloudX = leakSource.position.x + windNorm.x * windSpeed * elapsed;
-        float cloudZ = leakSource.position.z + windNorm.y * windSpeed * elapsed;
+        float downwind = dx * windNorm.x + dz * windNorm.y;
+        float windBonus = 1f + Mathf.Max(0f, downwind / (sigma + 1f)) * 0.3f;
 
-        // Y축: 가스 종류에 따라 상승 또는 하강
-        float cloudY = leakSource.position.y + verticalSpeed * elapsed;
-
-        // 시간에 따라 확산 범위 증가
-        float sigma = sigmaBase + sigmaGrowth * elapsed;
-        float sigmaY = verticalSigma + sigmaGrowth * elapsed * 0.5f;
-
-        // 3D 가우시안 분포
-        float distXZ = (x - cloudX) * (x - cloudX) + (z - cloudZ) * (z - cloudZ);
+        // Y축 가우시안 (가스 수직 거동)
+        float sigmaY = verticalSigma + sigmaGrowth * elapsed * 0.3f;
+        float cloudY = src.y + verticalSpeed * Mathf.Min(elapsed, 15f);
         float distY = (y - cloudY) * (y - cloudY);
+        float vertConc = Mathf.Exp(-distY / (2f * sigmaY * sigmaY));
 
-        float concXZ = Mathf.Exp(-distXZ / (2f * sigma * sigma));
-        float concY = Mathf.Exp(-distY / (2f * sigmaY * sigmaY));
-
-        float concentration = emissionRate * concXZ * concY;
-
-        return Mathf.Max(0f, concentration);
+        return Mathf.Max(0f, distConc * windBonus * vertConc * timeFactor);
     }
 
     // 2D 버전 (기존 호환 — Y축 무시)
@@ -124,15 +131,22 @@ public class GaussianPlumeModel : MonoBehaviour
         float elapsed = Time.time - leakStartTime;
         if (elapsed <= 0f) return 0f;
 
+        float dx = x - leakSource.position.x;
+        float dz = z - leakSource.position.z;
+        float dist = Mathf.Sqrt(dx * dx + dz * dz);
+
+        float timeFactor = Mathf.Clamp01(elapsed / 5f);
+        float sigma = sigmaBase + sigmaGrowth * Mathf.Min(elapsed, 20f);
+
+        // 거리에 따른 지수 감쇠
+        float distConc = emissionRate * Mathf.Exp(-dist * dist / (2f * sigma * sigma));
+
+        // 바람 보너스
         Vector2 windNorm = windDirection.normalized;
-        float cloudX = leakSource.position.x + windNorm.x * windSpeed * elapsed;
-        float cloudZ = leakSource.position.z + windNorm.y * windSpeed * elapsed;
+        float downwind = dx * windNorm.x + dz * windNorm.y;
+        float windBonus = 1f + Mathf.Max(0f, downwind / (sigma + 1f)) * 0.3f;
 
-        float sigma = sigmaBase + sigmaGrowth * elapsed;
-        float distSq = (x - cloudX) * (x - cloudX) + (z - cloudZ) * (z - cloudZ);
-        float concentration = emissionRate * Mathf.Exp(-distSq / (2f * sigma * sigma));
-
-        return Mathf.Max(0f, concentration);
+        return Mathf.Max(0f, distConc * windBonus * timeFactor);
     }
 
     // 누출 시작
@@ -157,10 +171,12 @@ public class GaussianPlumeModel : MonoBehaviour
 
         float main = GetConcentration(x, z);
 
+        // 누출원 풍하 쪽에 난류 공백 영역 생성
         float elapsed = Time.time - leakStartTime;
         Vector2 windNorm = windDirection.normalized;
-        float voidX = leakSource.position.x + windNorm.x * windSpeed * elapsed * 0.5f;
-        float voidZ = leakSource.position.z + windNorm.y * windSpeed * elapsed * 0.5f;
+        float voidDist = Mathf.Min(windSpeed * elapsed * 0.3f, 5f); // 최대 5m
+        float voidX = leakSource.position.x + windNorm.x * voidDist;
+        float voidZ = leakSource.position.z + windNorm.y * voidDist;
         float sigmaV = 0.3f + 0.03f * elapsed;
         float voidDistSq = (x - voidX) * (x - voidX) + (z - voidZ) * (z - voidZ);
         float voidVal = 60f * Mathf.Exp(-voidDistSq / (2f * sigmaV * sigmaV));
@@ -169,8 +185,15 @@ public class GaussianPlumeModel : MonoBehaviour
     }
 
     // Inspector에서 가스 타입 변경 시 자동 반영
+    // 수동으로 값을 조정하고 싶으면 이 함수를 비활성화하세요
+    private GasType lastGasType;
     void OnValidate()
     {
-        ApplyGasPreset(gasType);
+        // 가스 타입이 변경됐을 때만 프리셋 적용 (수동 조정 보호)
+        if (lastGasType != gasType)
+        {
+            lastGasType = gasType;
+            ApplyGasPreset(gasType);
+        }
     }
 }

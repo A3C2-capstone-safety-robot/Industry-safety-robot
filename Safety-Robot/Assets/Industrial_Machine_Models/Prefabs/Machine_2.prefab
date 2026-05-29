@@ -142,7 +142,7 @@ Transform:
   m_GameObject: {fileID: 8091798863874363935}
   serializedVersion: 2
   m_LocalRotation: {x: -0.15928663, y: 0.94751984, z: 0.24619137, w: 0.12737261}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -0.078, y: 0.106, z: 0.144}
   m_LocalScale: {x: 0.10905, y: 0.10905, z: 0.10905}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -231,7 +231,7 @@ ParticleSystem:
     startLifetime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 40
+      scalar: 20
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -284,7 +284,7 @@ ParticleSystem:
     startSpeed:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 0.3
+      scalar: 1.5
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -402,7 +402,7 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 0.5
+      scalar: 2
       minScalar: 1
       maxCurve:
         serializedVersion: 2
@@ -3734,7 +3734,7 @@ ParticleSystem:
         m_NumAlphaKeys: 2
     range: {x: 0, y: 1}
   CollisionModule:
-    enabled: 1
+    enabled: 0
     serializedVersion: 4
     type: 1
     collisionMode: 0
@@ -4964,6 +4964,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GasVisualizer
   plumeModel: {fileID: 3050035904040306495}
+  verticalScale: 0.3
 --- !u!1 &8395261006143660733
 GameObject:
   m_ObjectHideFlags: 0
@@ -5011,14 +5012,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GaussianPlumeModel
   gasType: 0
   leakSource: {fileID: 4321410953319872139}
-  emissionRate: 80
-  windDirection: {x: 1, y: 0}
+  emissionRate: 100
+  windDirection: {x: 0, y: 0}
   windSpeed: 1.5
-  sigmaBase: 0.4
-  sigmaGrowth: 0.03
+  sigmaBase: 5
+  sigmaGrowth: 0.3
   verticalSpeed: -0.3
-  verticalSigma: 0.2
+  verticalSigma: 1.5
   alertThreshold: 10
-  dangerThreshold: 100
+  dangerThreshold: 50
   leakStartTime: -1
   isLeaking: 0

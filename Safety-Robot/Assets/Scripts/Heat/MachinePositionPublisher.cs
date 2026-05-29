@@ -84,16 +84,14 @@ public class MachinePositionPublisher : MonoBehaviour
 
         for (int i = 0; i < machines.Length; i++)
         {
-            // ── 중심 좌표 ──────────────────────────────────────
-            Vector3 u = machines[i].transform.position;
-            data[i * 6 + 0] = u.z;   // ROS cx
-            data[i * 6 + 1] = -u.x;   // ROS cy
-            data[i * 6 + 2] = u.y;   // ROS cz
+            Bounds bounds = GetWorldBounds(machines[i]);
+            Vector3 center = bounds.center;
+            Vector3 e = bounds.extents;
 
-            // ── 바운딩박스 반크기(extents) ──────────────────────
-            // Renderer 또는 Collider 에서 월드 공간 크기를 얻음.
-            // 둘 다 없으면 기본값 (0.5m) 사용.
-            Vector3 e = GetWorldExtents(machines[i]);
+            // ── 중심 좌표 ──────────────────────────────────────
+            data[i * 6 + 0] = center.z;   // ROS cx
+            data[i * 6 + 1] = -center.x;  // ROS cy
+            data[i * 6 + 2] = center.y;   // ROS cz
 
             // 축 재배치 (extents는 절댓값 반크기 → 부호 불필요)
             data[i * 6 + 3] = e.z;    // ROS ex  ← Unity ez
@@ -105,23 +103,16 @@ public class MachinePositionPublisher : MonoBehaviour
         ros.Publish(topicName, msg);
     }
 
-    /// <summary>
-    /// 설비의 월드 공간 바운딩박스 반크기(extents)를 반환.
-    /// Renderer → Collider → 기본값(0.5) 순으로 시도.
-    /// </summary>
-    static Vector3 GetWorldExtents(MachineHeat machine)
+    static Bounds GetWorldBounds(MachineHeat machine)
     {
-        // 1순위: Renderer (MeshRenderer 등)
         Renderer rend = machine.GetComponentInChildren<Renderer>();
         if (rend != null)
-            return rend.bounds.extents;
+            return rend.bounds;
 
-        // 2순위: Collider
         Collider col = machine.GetComponentInChildren<Collider>();
         if (col != null)
-            return col.bounds.extents;
+            return col.bounds;
 
-        // 기본 fallback
-        return new Vector3(0.5f, 0.5f, 0.5f);
+        return new Bounds(machine.transform.position, Vector3.one);
     }
 }
