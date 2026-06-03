@@ -37,7 +37,11 @@ public class CmdVelSubscriber : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (suppressMovement) return;
+        if (suppressMovement)
+        {
+            StopRigidbody();
+            return;
+        }
 
         if (rb != null)
         {
@@ -50,5 +54,21 @@ public class CmdVelSubscriber : MonoBehaviour
             transform.position += targetLinearVel * Time.fixedDeltaTime;
             transform.Rotate(0f, targetAngularVel * Mathf.Rad2Deg * Time.fixedDeltaTime, 0f);
         }
+    }
+
+    public void ResetCommand()
+    {
+        targetLinearVel = Vector3.zero;
+        targetAngularVel = 0f;
+        StopRigidbody();
+    }
+
+    void StopRigidbody()
+    {
+        if (rb == null)
+            return;
+
+        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
+        rb.angularVelocity = Vector3.zero;
     }
 }

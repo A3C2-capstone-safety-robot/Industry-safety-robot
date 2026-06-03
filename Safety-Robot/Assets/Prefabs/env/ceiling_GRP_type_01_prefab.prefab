@@ -408,6 +408,7 @@ GameObject:
   - component: {fileID: 6546416518969441165}
   - component: {fileID: 7075424818659917240}
   - component: {fileID: 3576696956011908868}
+  - component: {fileID: 8112186461582015795}
   m_Layer: 0
   m_Name: ceiling_type_aluminium_01
   m_TagString: Untagged
@@ -487,6 +488,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &8112186461582015795
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 439966456448228809}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 16, y: 0.018454589, z: 9.999998}
+  m_Center: {x: 0, y: -0.10997315, z: -0.00000166893}
 --- !u!1 &465488244228772652
 GameObject:
   m_ObjectHideFlags: 0
@@ -498,6 +520,7 @@ GameObject:
   - component: {fileID: 8809378109930648542}
   - component: {fileID: 3252207090468255397}
   - component: {fileID: 6375599483761454945}
+  - component: {fileID: 7213913031066377453}
   m_Layer: 0
   m_Name: cantilever_scaffolding_A_01
   m_TagString: Untagged
@@ -577,6 +600,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &7213913031066377453
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 465488244228772652}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 13.6174755, y: 1.1208081, z: 1.5033576}
+  m_Center: {x: 0, y: -0.10497315, z: 0}
 --- !u!1 &698616537256827321
 GameObject:
   m_ObjectHideFlags: 0
@@ -936,6 +980,7 @@ GameObject:
   - component: {fileID: 394470211646235540}
   - component: {fileID: 5038394049790403264}
   - component: {fileID: 6197503595715380472}
+  - component: {fileID: 7206389958742325157}
   m_Layer: 0
   m_Name: cantilever_scaffolding_B_01
   m_TagString: Untagged
@@ -1015,6 +1060,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &7206389958742325157
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1239175779295872730}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.096709, y: 1.0434948, z: 10.000083}
+  m_Center: {x: 0, y: -0.10497314, z: 0}
 --- !u!1 &1515961614014594763
 GameObject:
   m_ObjectHideFlags: 0
@@ -1273,6 +1339,7 @@ GameObject:
   - component: {fileID: 8084227721618230589}
   - component: {fileID: 5221528315516846386}
   - component: {fileID: 8670546798732087309}
+  - component: {fileID: 7093869711913939595}
   m_Layer: 0
   m_Name: railing_B_01
   m_TagString: Untagged
@@ -1352,6 +1419,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &7093869711913939595
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2802960404702945117}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 1.262832, y: 0.17777465, z: 10.000092}
+  m_Center: {x: 0, y: -0.104973145, z: 0}
 --- !u!1 &3011513023639340709
 GameObject:
   m_ObjectHideFlags: 0
@@ -1453,6 +1541,7 @@ GameObject:
   - component: {fileID: 6548525465789409935}
   - component: {fileID: 3366624821919200672}
   - component: {fileID: 7528799727910541988}
+  - component: {fileID: 3429638284451416252}
   m_Layer: 0
   m_Name: light_hangers_02
   m_TagString: Untagged
@@ -1532,6 +1621,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &3429638284451416252
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3212644243084202557}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.24752319, y: 1.0330279, z: 10.000082}
+  m_Center: {x: 0, y: -0.10497312, z: 0}
 --- !u!1 &3277857897772361598
 GameObject:
   m_ObjectHideFlags: 0
@@ -2027,6 +2137,7 @@ GameObject:
   - component: {fileID: 647895125308931284}
   - component: {fileID: 2679056904619315823}
   - component: {fileID: 1888794322771533731}
+  - component: {fileID: 4265055868102026353}
   m_Layer: 0
   m_Name: light_hangers_01
   m_TagString: Untagged
@@ -2106,6 +2217,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &4265055868102026353
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4890253888055628527}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.24752319, y: 1.0330274, z: 10.000082}
+  m_Center: {x: 0, y: -0.10497376, z: 0}
 --- !u!1 &4987149241794510771
 GameObject:
   m_ObjectHideFlags: 0
@@ -2207,6 +2339,7 @@ GameObject:
   - component: {fileID: 1018198234981270436}
   - component: {fileID: 512045343077085287}
   - component: {fileID: 5461188546031833330}
+  - component: {fileID: 1111763732387600305}
   m_Layer: 0
   m_Name: railing_A_01
   m_TagString: Untagged
@@ -2286,6 +2419,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &1111763732387600305
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5122092364205751623}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 13.511977, y: 0.17698242, z: 1.6155761}
+  m_Center: {x: 0, y: -0.104973145, z: 0}
 --- !u!1 &5325220965169844262
 GameObject:
   m_ObjectHideFlags: 0
@@ -3739,6 +3893,7 @@ GameObject:
   - component: {fileID: 9136757515461513866}
   - component: {fileID: 5818558079619436032}
   - component: {fileID: 5523309507604206887}
+  - component: {fileID: 8929697595627782790}
   m_Layer: 0
   m_Name: light_hangers_03
   m_TagString: Untagged
@@ -3818,6 +3973,27 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!65 &8929697595627782790
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8953978589663558283}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.24752197, y: 1.0633252, z: 10.000082}
+  m_Center: {x: 0, y: -0.10497314, z: 0}
 --- !u!1 &9003622469296495279
 GameObject:
   m_ObjectHideFlags: 0
