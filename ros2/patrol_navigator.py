@@ -11,6 +11,7 @@ from action_msgs.msg import GoalStatus
 import yaml
 import math
 import os
+import re
 import time
 import threading
 
@@ -24,25 +25,46 @@ DOOR_POSITIONS = [
     {'name': 'exit_door_02_C', 'x': 14.5,   'y': 17.0},
 ]
 
+# 구역 정의 - 좌표 경계는 예서님 맵 기준. 지영님 맵에 맞게 숫자 조정 필요.
+ZONE_DEFINITIONS = {
+    'A구역': lambda x, y: x < 0 and y < -5,
+    'B구역': lambda x, y: x < 0 and y >= -5,
+    'C구역': lambda x, y: 0 <= x < 21 and y < 0,
+    'D구역': lambda x, y: 0 <= x < 21 and y >= 0,
+    'E구역': lambda x, y: x >= 21,
+}
+
+
+def get_zone(x, y):
+    for zone, cond in ZONE_DEFINITIONS.items():
+        if cond(x, y):
+            return zone
+    return '알수없음'
+
 
 class PatrolNavigator(Node):
     def __init__(self):
         super().__init__('patrol_navigator')
 
-        # 점검 지점 파일: 이 스크립트와 같은 폴더의 inspection_points.yaml
         default_points = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), 'inspection_points.yaml'
         )
         self.declare_parameter('inspection_yaml', default_points)
-        # 각 기계 앞에서 멈춰 점검하는 시간(초)
         self.declare_parameter('dwell_time', 3.0)
-        # (구버전 호환용 — 지금은 안 쓰지만, 기존 실행 명령이 깨지지 않게 남겨둠)
         self.declare_parameter('map_yaml', '')
         self.declare_parameter('grid_resolution', 2.0)
         self.declare_parameter('free_pixel_thresh', 200)
 
         self.inspection_yaml = self.get_parameter('inspection_yaml').value
         self.dwell_time = float(self.get_parameter('dwell_time').value)
+
+        # 과열 단계 임계값 (Unity MachineHeat 와 동기화)
+        self.caution_thres = 80.0
+        self.warning_thres = 100.0
+        self.danger_thres = 120.0
+        self.max_temp = 180.0
+        self.overheat_cooldown = 15.0
+        self._overheat_reported = {}
 
         self.patrol_active = True
         self.evacuating = False
@@ -55,25 +77,20 @@ class PatrolNavigator(Node):
         self._nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose', callback_group=cb)
 
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10, callback_group=cb)
-        self.create_subscription(String, '/thermal_alerts', self.alert_callback, 10, callback_group=cb)
-        self.create_subscription(String, '/gas_alert', self.alert_callback, 10, callback_group=cb)
+        self.create_subscription(String, '/thermal_alerts', self.thermal_callback, 10, callback_group=cb)
+        self.create_subscription(String, '/gas_alert', self.gas_callback, 10, callback_group=cb)
+
+        self._status_pub = self.create_publisher(String, '/robot_status', 10)
 
         self.inspection_points = self.load_inspection_points()
-        self.get_logger().info(f'점검 지점 {len(self.inspection_points)}개 로드 완료')
-        for name, x, y, _ in self.inspection_points:
-            self.get_logger().info(f'  - {name} ({x:.2f}, {y:.2f})')
+        self.get_logger().info('점검 지점 %d개 로드 완료' % len(self.inspection_points))
 
-    # ────────────────────────────────────────────────
-    #  점검 지점 로드
-    # ────────────────────────────────────────────────
     def load_inspection_points(self):
         if not os.path.exists(self.inspection_yaml):
-            self.get_logger().error(f'점검 지점 파일을 찾을 수 없음: {self.inspection_yaml}')
+            self.get_logger().error('점검 지점 파일을 찾을 수 없음: %s' % self.inspection_yaml)
             return []
-
         with open(self.inspection_yaml, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
-
         points = []
         for item in (data.get('inspection_points') or []):
             try:
@@ -84,33 +101,80 @@ class PatrolNavigator(Node):
                     float(item.get('yaw', 0.0)),
                 ))
             except (KeyError, TypeError, ValueError):
-                self.get_logger().warn(f'잘못된 점검 지점 건너뜀: {item}')
+                self.get_logger().warn('잘못된 점검 지점 건너뜀: %s' % item)
         return points
 
-    # ────────────────────────────────────────────────
-    #  콜백
-    # ────────────────────────────────────────────────
     def odom_callback(self, msg):
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
 
-    def alert_callback(self, msg):
+    def thermal_callback(self, msg):
+        text = msg.data
+        m = re.search(r'\[([^\]]+)\]\s*([\d.]+)\s*C', text)
+        if not m:
+            return
+
+        machine = m.group(1)
+        temp = float(m.group(2))
+        if temp < self.caution_thres:
+            return
+
+        now = time.time()
+        if now - self._overheat_reported.get(machine, 0.0) < self.overheat_cooldown:
+            return
+        self._overheat_reported[machine] = now
+
+        if temp >= self.max_temp:
+            level, need_evac = '최대(즉시대피)', True
+        elif temp >= self.danger_thres:
+            level, need_evac = '위험', False
+        elif temp >= self.warning_thres:
+            level, need_evac = '경고', False
+        else:
+            level, need_evac = '주의', False
+
+        zone = get_zone(self.current_x, self.current_y)
+        guide = text.split('-', 1)[1].strip() if '-' in text else ''
+        report = ('[과열] %s %.1f°C | 단계:%s | 구역:%s | 위치:(%.1f,%.1f) | 조치:%s'
+                  % (machine, temp, level, zone, self.current_x, self.current_y, guide))
+
+        if need_evac:
+            with self._lock:
+                do_evac = not self.evacuating
+                if do_evac:
+                    self.evacuating = True
+                    self.patrol_active = False
+            nearest = self.find_nearest_door()
+            report += ' | 대피필요 → 최근접출구:%s' % nearest['name']
+            self.publish_status(report)
+            self.get_logger().error('🔥 %s' % report)
+            if do_evac:
+                threading.Thread(target=self.evacuate, args=(nearest,), daemon=True).start()
+        else:
+            self.publish_status(report)
+            self.get_logger().warn('🔥 %s' % report)
+
+    def gas_callback(self, msg):
+        text = msg.data
+        is_danger = 'DANGER' in text.upper() or '[위험]' in text
+        if not is_danger:
+            return
         with self._lock:
             if self.evacuating:
                 return
-            text = msg.data
-            is_danger = '[위험]' in text or '[경고]' in text or '가스' in text or 'gas' in text.lower()
-            if not is_danger:
-                return
             self.evacuating = True
             self.patrol_active = False
-
-        self.get_logger().warn(f'🚨 위험 경보 수신! "{text[:50]}"')
         nearest = self.find_nearest_door()
-        self.get_logger().warn(f'🚪 가장 가까운 문: {nearest["name"]} → 즉시 대피!')
+        zone = get_zone(self.current_x, self.current_y)
+        report = '[가스] %s | 구역:%s | 대피 → %s' % (text[:60], zone, nearest['name'])
+        self.publish_status(report)
+        self.get_logger().warn('🚨 %s' % report)
+        threading.Thread(target=self.evacuate, args=(nearest,), daemon=True).start()
 
-        evac_thread = threading.Thread(target=self.evacuate, args=(nearest,), daemon=True)
-        evac_thread.start()
+    def publish_status(self, text):
+        msg = String()
+        msg.data = text
+        self._status_pub.publish(msg)
 
     def find_nearest_door(self):
         nearest = None
@@ -122,9 +186,6 @@ class PatrolNavigator(Node):
                 nearest = door
         return nearest
 
-    # ────────────────────────────────────────────────
-    #  목표 이동 (NavigateToPose) — 도착/실패/대피인터럽트까지 대기
-    # ────────────────────────────────────────────────
     def make_pose(self, x, y, yaw=0.0):
         pose = PoseStamped()
         pose.header.frame_id = 'map'
@@ -136,9 +197,7 @@ class PatrolNavigator(Node):
         return pose
 
     def go_to_pose(self, x, y, yaw, abort_check=None):
-        """목표까지 이동. 성공 True / 실패·중단 False. abort_check()가 True면 취소."""
         self._nav_client.wait_for_server()
-
         done = threading.Event()
         status = [None]
 
@@ -170,15 +229,13 @@ class PatrolNavigator(Node):
 
         return status[0] == GoalStatus.STATUS_SUCCEEDED
 
-    # ────────────────────────────────────────────────
-    #  대피
-    # ────────────────────────────────────────────────
     def evacuate(self, door):
         time.sleep(2.0)
-        self.get_logger().warn(f'🚶 대피 → {door["name"]}')
+        self.get_logger().warn('🚶 대피 → %s' % door['name'])
         success = self.go_to_pose(door['x'], door['y'], 0.0, abort_check=lambda: False)
         if success:
-            self.get_logger().warn(f'✅ 대피 완료! {door["name"]} 도착. 30초 후 순찰 재개...')
+            self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % door['name'])
+            self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % door['name'])
             time.sleep(30)
         else:
             self.get_logger().warn('대피 이동 실패')
@@ -186,11 +243,9 @@ class PatrolNavigator(Node):
         with self._lock:
             self.evacuating = False
             self.patrol_active = True
+        self._overheat_reported.clear()
         self.get_logger().info('🔄 순찰 재개!')
 
-    # ────────────────────────────────────────────────
-    #  순찰 루프 — 점검 지점을 순서대로 방문 + 각 지점에서 멈춰 점검
-    # ────────────────────────────────────────────────
     def _interrupted(self):
         return self.evacuating or not self.patrol_active
 
@@ -200,7 +255,7 @@ class PatrolNavigator(Node):
         self.get_logger().info('액션 서버 연결됨! 순찰 시작!')
 
         if not self.inspection_points:
-            self.get_logger().error('점검 지점이 없습니다. inspection_points.yaml 확인 필요. 종료.')
+            self.get_logger().error('점검 지점이 없습니다. 종료.')
             return
 
         total = len(self.inspection_points)
@@ -212,44 +267,40 @@ class PatrolNavigator(Node):
                 continue
 
             patrol_count += 1
-            self.get_logger().info(f'===== 순찰 {patrol_count}회차 시작 ({total}개 지점) =====')
+            self.get_logger().info('===== 순찰 %d회차 시작 (%d개 지점) =====' % (patrol_count, total))
             start_time = time.time()
 
             for idx, (name, x, y, yaw) in enumerate(self.inspection_points):
                 if self._interrupted():
                     break
 
-                self.get_logger().info(
-                    f'[{patrol_count}회차] {idx + 1}/{total} → {name} ({x:.2f}, {y:.2f}) 이동 중...'
-                )
+                self.get_logger().info('[%d회차] %d/%d → %s (%.2f, %.2f) 이동 중...'
+                                       % (patrol_count, idx + 1, total, name, x, y))
                 success = self.go_to_pose(x, y, yaw, abort_check=self._interrupted)
-
                 if self._interrupted():
                     self.get_logger().warn('🚨 순찰 중단 (대피)')
                     break
 
                 if success:
-                    self.get_logger().info(f'  ✅ {name} 도착 — 점검 중 ({self.dwell_time:.0f}초)')
+                    self.get_logger().info('  ✅ %s 도착 — 점검 중 (%.0f초)' % (name, self.dwell_time))
                     t0 = time.time()
                     while time.time() - t0 < self.dwell_time:
                         if self._interrupted():
                             break
                         time.sleep(0.2)
                 else:
-                    self.get_logger().warn(f'  ⚠ {name} 도달 실패 — 다음 지점으로')
+                    self.get_logger().warn('  ⚠ %s 도달 실패 — 다음 지점으로' % name)
 
             if not self._interrupted():
                 elapsed = time.time() - start_time
-                self.get_logger().info(
-                    f'✅ 순찰 {patrol_count}회차 완료 (소요: {int(elapsed // 60)}분 {int(elapsed % 60)}초)'
-                )
+                self.get_logger().info('✅ 순찰 %d회차 완료 (소요: %d분 %d초)'
+                                       % (patrol_count, int(elapsed // 60), int(elapsed % 60)))
                 time.sleep(2.0)
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = PatrolNavigator()
-
     patrol_thread = threading.Thread(target=node.run_patrol, daemon=True)
     patrol_thread.start()
 

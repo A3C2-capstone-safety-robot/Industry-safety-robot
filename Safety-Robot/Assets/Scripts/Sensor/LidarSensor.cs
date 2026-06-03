@@ -37,6 +37,11 @@ public class LidarSensor : MonoBehaviour
     float timer;
     Transform cachedBaseFrame;
 
+    // 등록 핸드셰이크 완료 전 발행 시 "Not registered" 에러 → 시작 후 잠깐 대기
+    [Tooltip("ROS 등록 완료를 기다리는 시작 지연(초)")]
+    public float startupDelay = 1.5f;
+    float _startupTimer = 0f;
+
     void Start()
     {
         ros = ROSConnection.GetOrCreateInstance();
@@ -50,6 +55,13 @@ public class LidarSensor : MonoBehaviour
 
     void Update()
     {
+        // 등록 완료 대기 (Not registered 에러 방지)
+        if (_startupTimer < startupDelay)
+        {
+            _startupTimer += Time.deltaTime;
+            return;
+        }
+
         timer += Time.deltaTime;
         if (timer < 1f / publishHz) return;
         timer = 0f;

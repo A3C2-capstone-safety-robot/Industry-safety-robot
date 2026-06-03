@@ -38,6 +38,12 @@ public class MachineHeat : MonoBehaviour
         propBlock   = new MaterialPropertyBlock();
         if (machineRenderer == null)
             machineRenderer = GetComponent<Renderer>();
+        // 루트에 Renderer 가 없으면 자식 메쉬에서 찾음 (새 기계 모델 대응)
+        if (machineRenderer == null)
+            machineRenderer = GetComponentInChildren<Renderer>();
+        if (machineRenderer == null)
+            Debug.LogWarning($"[MachineHeat] {machineId}: Renderer 를 못 찾음 — 색 변화 비활성. " +
+                             "Inspector 의 Machine Renderer 칸에 메쉬 오브젝트를 연결하세요.", this);
     }
 
     void Update()
@@ -63,6 +69,10 @@ public class MachineHeat : MonoBehaviour
 
     void UpdateVisual()
     {
+        // Renderer 가 없으면 색 변화 스킵 (크래시 방지)
+        if (machineRenderer == null) return;
+        if (propBlock == null) propBlock = new MaterialPropertyBlock();
+
         Color targetColor;
         float t;
 
