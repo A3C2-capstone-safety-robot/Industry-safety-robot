@@ -13,7 +13,7 @@ public class GasLeakManager : MonoBehaviour
 
     [Header("UI 설정")]
     public bool showUI = true;
-    public KeyCode toggleUIKey = KeyCode.Tab;      // UI 표시/숨김 토글 키
+    public KeyCode toggleUIKey = KeyCode.G;        // UI 표시/숨김 토글 키 (가스 = G)
 
     // 씬의 모든 누출원 자동 탐지
     private GaussianPlumeModel[] allLeakPoints;
