@@ -3,7 +3,7 @@ amcl:
     use_sim_time: false
     base_frame_id: base_link
     odom_frame_id: odom
-    scan_topic: /scan
+    scan_topic: /scan_fixed
     transform_tolerance: 1.0
     max_particles: 1000
     min_particles: 200
@@ -86,7 +86,7 @@ local_costmap:
         enabled: true
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_fixed
           clearing: true
           marking: true
           data_type: "LaserScan"

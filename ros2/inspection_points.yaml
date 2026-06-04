@@ -1,0 +1,58 @@
+# 점검 지점 (티칭으로 생성). patrol_navigator 가 이 순서대로 방문.
+inspection_points:
+  - name: "PT_D"
+    x: -9.414
+    y: 5.813
+    yaw: 2.882
+  - name: "PT_C"
+    x: -9.928
+    y: 0.705
+    yaw: 2.673
+  - name: "PT_B"
+    x: -9.828
+    y: -9.603
+    yaw: 2.716
+  - name: "PT_A"
+    x: -10.108
+    y: -9.709
+    yaw: -2.46
+  - name: "HE_E"
+    x: 11.521
+    y: -9.619
+    yaw: 0.063
+  - name: "PT_E"
+    x: 13.362
+    y: -12.877
+    yaw: 0.138
+  - name: "HE_D"
+    x: 13.212
+    y: -6.195
+    yaw: 0.634
+  - name: "LNG"
+    x: 15.327
+    y: 3.217
+    yaw: 0.288
+  - name: "LNG2"
+    x: 28.638
+    y: 6.865
+    yaw: -0.475
+  - name: "NH3"
+    x: 2.927
+    y: 0.382
+    yaw: 3.039
+  - name: "NH3_2"
+    x: -4.447
+    y: 1.095
+    yaw: 3.133
+  - name: "HE_A"
+    x: -9.054
+    y: 6.772
+    yaw: 0.837
+  - name: "HE_B"
+    x: -5.017
+    y: 7.47
+    yaw: 0.763
+  - name: "HE_C"
+    x: -0.711
+    y: 7.637
+    yaw: 0.622
