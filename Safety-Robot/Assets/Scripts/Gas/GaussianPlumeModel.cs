@@ -1,4 +1,5 @@
 // GaussianPlumeModel.cs
+using System.Collections.Generic;
 using UnityEngine;
 
 public enum GasType
@@ -28,6 +29,7 @@ public class GaussianPlumeModel : MonoBehaviour
     [Header("Y축 거동 (자동 설정됨)")]
     public float verticalSpeed = 0f;       // + 상승, - 하강 (m/s)
     public float verticalSigma = 0.3f;     // Y축 확산 범위
+    public float ceilingHeight = 4f;       // 실내 천장 높이 (m) — 상승 가스가 고이는 한계
 
     [Header("경보 임계값 (자동 설정됨)")]
     public float alertThreshold = 30f;     // ppm
@@ -39,6 +41,66 @@ public class GaussianPlumeModel : MonoBehaviour
     [Header("시뮬레이션")]
     public float leakStartTime = -1f;
     public bool isLeaking = false;
+
+    [Header("장애물 감쇠 (히트맵 벽 뚫림 방지)")]
+    [Tooltip("누출원→측정점 사이 Static 장애물 1개당 농도 감쇠 배율 (0.15 = 벽 하나당 85% 차단, 1 = 감쇠 없음)")]
+    [Range(0f, 1f)] public float wallAttenuation = 0.15f;
+    [Tooltip("감쇠를 적용할 최대 장애물 수 (이 이상은 동일 취급)")]
+    public int maxWallCount = 3;
+    [Tooltip("감쇠 캐시 셀 크기(m) — 작을수록 정밀, 클수록 빠름")]
+    public float occlusionCellSize = 0.75f;
+    [Tooltip("장애물 검사 레이 높이 — 누출원 기준 위 오프셋(m)")]
+    public float occlusionRayHeight = 0.4f;
+
+    // (cx,cz) 셀 → 감쇠 계수 캐시. 지형은 정적이므로 한 번 계산 후 재사용.
+    private readonly Dictionary<long, float> occlusionCache = new Dictionary<long, float>();
+    private Vector3 occlusionCacheSrc = Vector3.positiveInfinity;
+
+    // 누출원→(x,z) 사이 정적 장애물 수에 따른 감쇠 계수 (1 = 시야 확보, 벽당 wallAttenuation 곱)
+    float GetOcclusionFactor(float x, float z)
+    {
+        if (wallAttenuation >= 1f || leakSource == null) return 1f;
+
+        Vector3 src = leakSource.position;
+        // 누출원이 이동했으면 캐시 무효화
+        if ((src - occlusionCacheSrc).sqrMagnitude > 0.25f)
+        {
+            occlusionCache.Clear();
+            occlusionCacheSrc = src;
+        }
+
+        float cell = Mathf.Max(0.25f, occlusionCellSize);
+        int cx = Mathf.RoundToInt(x / cell);
+        int cz = Mathf.RoundToInt(z / cell);
+        long key = ((long)cx << 32) ^ (uint)cz;
+        if (occlusionCache.TryGetValue(key, out float cached)) return cached;
+
+        Vector3 from = src + Vector3.up * occlusionRayHeight;
+        Vector3 to = new Vector3(cx * cell, src.y + occlusionRayHeight, cz * cell);
+        Vector3 d = to - from;
+        float len = d.magnitude;
+
+        int walls = 0;
+        if (len > 0.05f)
+        {
+            RaycastHit[] hits = Physics.RaycastAll(from, d / len, len,
+                Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var col = hits[i].collider;
+                // 로봇 등 움직이는 물체는 무시 — Static 지형만 벽으로 취급
+                if (!col.gameObject.isStatic) continue;
+                // 누출원을 품은 콜라이더(누출 중인 탱크 자신)는 제외
+                if (col.bounds.Contains(src)) continue;
+                walls++;
+                if (walls >= maxWallCount) break;
+            }
+        }
+
+        float factor = Mathf.Pow(wallAttenuation, walls);
+        occlusionCache[key] = factor;
+        return factor;
+    }
 
     void Awake()
     {
@@ -125,12 +187,13 @@ public class GaussianPlumeModel : MonoBehaviour
         // Y축 가우시안 (가스 수직 거동) — 수직 퍼짐도 거리 비례
         float sigmaY = verticalSigma + sigmaGrowth * dist * 0.5f;
         float cloudY = src.y + verticalSpeed * Mathf.Min(elapsed, 15f);
-        // 무거운 가스(H2S 등)는 바닥에 깔림 — 지면 아래로 침투하지 않게 클램프
-        cloudY = Mathf.Max(cloudY, 0.3f);
+        // 실내 클램프 — 무거운 가스는 바닥에 깔리고, 가벼운 가스는 천장에 고임
+        cloudY = Mathf.Clamp(cloudY, 0.3f, ceilingHeight);
         float distY = (y - cloudY) * (y - cloudY);
         float vertConc = Mathf.Exp(-distY / (2f * sigmaY * sigmaY));
 
-        return Mathf.Max(0f, distConc * windBonus * vertConc * timeFactor);
+        return Mathf.Max(0f, distConc * windBonus * vertConc * timeFactor
+                             * GetOcclusionFactor(x, z));
     }
 
     // 2D 버전 (기존 호환 — Y축 무시)
@@ -157,7 +220,8 @@ public class GaussianPlumeModel : MonoBehaviour
         float downwind = dx * windNorm.x + dz * windNorm.y;
         float windBonus = 1f + Mathf.Max(0f, downwind / (sigma + 1f)) * 0.3f;
 
-        return Mathf.Max(0f, distConc * windBonus * timeFactor);
+        return Mathf.Max(0f, distConc * windBonus * timeFactor
+                             * GetOcclusionFactor(x, z));
     }
 
     // 누출 시작
@@ -165,6 +229,7 @@ public class GaussianPlumeModel : MonoBehaviour
     {
         isLeaking = true;
         leakStartTime = Time.time;
+        occlusionCache.Clear();   // 새 누출 시작 시 감쇠 캐시 초기화
         Debug.Log($"[가스 누출] {gasType} — {leakSource.name} 위치에서 누출 시작!");
     }
 

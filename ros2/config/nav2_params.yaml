@@ -65,7 +65,7 @@ planner_server:
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
+      tolerance: 1.0   # 목표가 inflation 안이어도 근처 도달 가능 지점으로 계획 허용
       use_astar: true
       allow_unknown: true
 

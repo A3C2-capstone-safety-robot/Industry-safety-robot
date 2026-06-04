@@ -13,6 +13,7 @@ public enum MothState
     Cast,           // 탐색 — 좌우 지그재그 (가스 신호 소실 시)
     Spiral,         // 나선 — 고농도 구역에서 누출원 정밀 탐색
     ReturnToBest,   // 수렴 후 최고 농도 지점으로 복귀
+    Verify,         // 검증 주행 — 후보 지점 주위를 돌며 실측으로 정점 확인
     SourceFound     // 누출원 도달
 }
 
@@ -44,7 +45,10 @@ public class MothSearchAlgorithm : MonoBehaviour
     public float spiralGrowth = 0.2f;            // Spiral 반경 증가량
     public float sourceThreshold = 80f;          // 누출원 도달 판정 농도 (ppm) — 절대 임계값(보조)
     public float localMaxEpsilon = 0.5f;         // 국소최대 판정 여유(주변보다 이만큼 안 높아도 정점 인정)
-    public float convergeSeconds = 6f;           // 이 시간 동안 농도 개선 없으면 최고점으로 복귀
+    public float convergeSeconds = 12f;          // 이 시간 동안 농도 개선 없으면 최고점으로 복귀
+    public float localMaxHoldSeconds = 2f;       // 국소최대 판정이 이 시간 연속 유지돼야 확정 (노이즈/순간 오판 방지)
+    [Tooltip("누출원 확정에 필요한 최소 농도 = dangerThreshold × 이 비율. 미달이면 확정 대신 재탐색")]
+    public float minConfirmFraction = 0.5f;
     public float arrivalRadius = 1f;             // bestPos 도달 판정 반경 (m) — 이동단위(2m)·σ 고려
     public int maxReturnRetries = 2;             // bestPos 도착 후 재탐색(Surge) 허용 횟수
 
@@ -72,6 +76,8 @@ public class MothSearchAlgorithm : MonoBehaviour
     private ROSConnection ros;
     private float goalTimer = 0f;
     private Vector3 currentGoal;
+    private Vector3 lastPublishedGoal = Vector3.positiveInfinity; // Nav2 중복 발행 방지
+    private float lastGoalPublishTime = -999f;
 
     // Cast 관련
     private int castCount = 0;
@@ -144,6 +150,109 @@ public class MothSearchAlgorithm : MonoBehaviour
         // 클래스 상단에 추가
     private float stuckTimer = 0f;
     private Vector3 lastStuckCheckPos;
+
+    // ============================================================
+    //  함정(막다른 길) 기억 — 그래디언트가 가리키는 막힌 틈에
+    //  반복해서 빠지는 무한루프 방지
+    // ============================================================
+    [Header("함정 기억")]
+    [Tooltip("스턱 지점 주변 이 반경은 함정 구역으로 기억하고 회피")]
+    public float trapRadius = 2.5f;
+    [Tooltip("함정 기억 유지 시간 (초)")]
+    public float trapMemorySeconds = 120f;
+    [Tooltip("함정 탈출 후 그래디언트를 무시하고 도망가는 시간 (초). 재방문 시마다 2배씩 증가")]
+    public float escapeCommitSeconds = 4f;
+
+    class TrapPoint
+    {
+        public Vector3 pos;
+        public float registeredTime;
+        public int hits; // 같은 함정에 빠진 횟수 (많을수록 더 오래/넓게 회피)
+    }
+    private readonly System.Collections.Generic.List<TrapPoint> trapPoints = new System.Collections.Generic.List<TrapPoint>();
+    private float escapeCommitUntil = -1f;
+    private float localMaxHold = 0f;             // 국소최대 연속 유지 시간
+
+    // ============================================================
+    //  검증 주행 (Verify) — "주변을 실제로 돌아보고 전부 낮으면 확정"
+    // ============================================================
+    [Header("검증 주행")]
+    [Tooltip("후보 지점 주위에 찍는 검증 웨이포인트 수")]
+    public int verifyPoints = 6;
+    [Tooltip("검증 주행 반경 (m)")]
+    public float verifyRadius = 1.5f;
+    [Tooltip("이웃 실측 농도가 중심×이 비율보다 높으면 '정점 아님' 판정")]
+    public float verifyMargin = 1.1f;
+    [Tooltip("웨이포인트 하나당 이동 제한 시간 (초) — 초과 시 막힌 곳으로 보고 스킵")]
+    public float verifyWpTimeout = 8f;
+
+    private Vector3 verifyCenter;
+    private float verifyCenterConc;
+    private int verifyIndex;
+    private float verifyWpTimer;
+
+    // 스턱 지점을 함정으로 등록 (기존 함정 근처면 hits 증가 = 에스컬레이션)
+    void RegisterTrap(Vector3 pos)
+    {
+        for (int i = 0; i < trapPoints.Count; i++)
+        {
+            if (Vector3.Distance(trapPoints[i].pos, pos) < trapRadius)
+            {
+                trapPoints[i].hits++;
+                trapPoints[i].registeredTime = Time.time;
+                // 재방문 횟수만큼 탈출 유지 시간 2배씩 증가 (4s → 8s → 16s ...)
+                escapeCommitUntil = Time.time + escapeCommitSeconds * Mathf.Pow(2f, trapPoints[i].hits - 1);
+                Debug.Log($"[나방] 함정 재방문 {trapPoints[i].hits}회 → 탈출 유지 {escapeCommitUntil - Time.time:F0}초");
+                return;
+            }
+        }
+        trapPoints.Add(new TrapPoint { pos = pos, registeredTime = Time.time, hits = 1 });
+        escapeCommitUntil = Time.time + escapeCommitSeconds;
+        Debug.Log($"[나방] 함정 등록 ({pos.x:F1},{pos.z:F1}) — 총 {trapPoints.Count}개");
+    }
+
+    // 해당 좌표가 기억된 함정 구역 안인지 (만료된 함정은 정리)
+    bool IsInTrapZone(Vector3 pos)
+    {
+        for (int i = trapPoints.Count - 1; i >= 0; i--)
+        {
+            if (Time.time - trapPoints[i].registeredTime > trapMemorySeconds)
+            {
+                trapPoints.RemoveAt(i);
+                continue;
+            }
+            // 반복해서 빠진 함정일수록 회피 반경 확대
+            float r = trapRadius * (1f + 0.5f * (trapPoints[i].hits - 1));
+            if (Vector3.Distance(trapPoints[i].pos, pos) < r)
+                return true;
+        }
+        return false;
+    }
+
+    // MissionCoordinator가 껐다 켤 때마다 깨끗한 상태로 시작.
+    // (enabled=false로 꺼도 변수는 남아서, 이전 추적의 SourceFound/bestConc가
+    //  재활성화 즉시 '누출원발견'으로 재발행되는 버그 방지)
+    void OnEnable()
+    {
+        if (currentState != MothState.Idle)
+            Debug.Log($"[나방] 재활성화 — 상태 초기화 ({currentState} → Idle)");
+
+        currentState = MothState.Idle;
+        stateTimer = 0f;
+        bestConc = 0f;
+        bestPos = transform.position;
+        emaConc = 0f;
+        returnCount = 0;
+        searchStartTime = -1f;
+        lastDetectionTime = -999f;
+        resultRepublishTimer = 0f;
+        stuckTimer = 0f;
+        lastStuckCheckPos = transform.position;
+        currentGoal = transform.position;
+        trapPoints.Clear();
+        escapeCommitUntil = -1f;
+        localMaxHold = 0f;
+    }
     void Update()
     {
         if (gasSensor == null) return;
@@ -173,20 +282,44 @@ public class MothSearchAlgorithm : MonoBehaviour
             }
         }
 
-        // Cast(신호 소실 탐색) 중에는 수렴 시계 정지 — 헤매는 시간이 조기 수렴으로 이어지지 않게
-        if (currentState == MothState.Cast)
+        // Cast(신호 소실 탐색) 중 + 함정 탈출 도망 중에는 수렴 시계 정지
+        // — 헤매는/도망가는 시간(농도가 떨어지는 게 정상)이 조기 수렴으로 이어지지 않게
+        if (currentState == MothState.Cast || Time.time < escapeCommitUntil)
             lastImproveTime += Time.deltaTime;
+
+        // 국소최대 연속 유지 시간 추적 (한 프레임 오판으로 즉시 확정 방지)
+        if (currentState == MothState.Surge || currentState == MothState.Spiral)
+        {
+            if (IsAtLocalMaximum())
+                localMaxHold += Time.deltaTime;
+            else
+                localMaxHold = 0f;
+        }
+        else
+            localMaxHold = 0f;
 
         stateTimer += Time.deltaTime;
         gradientTimer += Time.deltaTime;  // ← 이 한 줄 추가
 
         stuckTimer += Time.deltaTime;
-        if (stuckTimer > 2f)
+        // Nav2 모드는 우회 경로 주행 중 제자리 회전/감속이 잦아 스턱 오판이 쉬움
+        // → 판정 주기를 길게 (Nav2 자체 리커버리가 1차 방어선)
+        float stuckWindow = useDirectMovement ? 2f : 6f;
+        if (stuckTimer > stuckWindow)
         {
             stuckTimer = 0f;
+
+            // 목표 방향으로 몸을 돌리는 중이면 스턱이 아님 (제자리 회전 오판 방지)
+            Vector3 toGoalNow = currentGoal - transform.position;
+            toGoalNow.y = 0f;
+            bool stillRotating = toGoalNow.magnitude > 0.3f
+                && Vector3.Angle(transform.forward, toGoalNow) > 45f;
+
             if (Vector3.Distance(transform.position, lastStuckCheckPos) < 0.5f
-                && currentState == MothState.Surge)
+                && currentState == MothState.Surge
+                && !stillRotating)
             {
+                RegisterTrap(transform.position);   // ★ 함정으로 기억 → 이후 그래디언트가 이쪽을 피함
                 lastSurgeDirection = FindMostOpenDirection();
                 Debug.Log($"[나방] 스턱 감지 → 열린 방향 ({lastSurgeDirection.x:F2}, {lastSurgeDirection.z:F2})");
                 TransitionTo(MothState.Cast);
@@ -218,6 +351,7 @@ public class MothSearchAlgorithm : MonoBehaviour
             case MothState.Cast:    HandleCast();        break;
             case MothState.Spiral:  HandleSpiral();      break;
             case MothState.ReturnToBest: HandleReturnToBest(); break;
+            case MothState.Verify:  HandleVerify();      break;
             case MothState.SourceFound: HandleSourceFound(); break;
         }
 
@@ -230,11 +364,20 @@ public class MothSearchAlgorithm : MonoBehaviour
         else
         {
             // Nav2로 목표 좌표 발행
+            // ★ 같은 goal을 1Hz로 재발행하면 Nav2가 매번 재계획 → 로봇이 버벅임.
+            //   goal이 실제로 바뀌었거나(>0.5m), 유실 대비 5초 경과 시에만 발행.
             goalTimer += Time.deltaTime;
             if (goalTimer >= 1f / goalPublishRate)
             {
                 goalTimer = 0f;
-                PublishNavGoal(currentGoal);
+                bool goalChanged = Vector3.Distance(currentGoal, lastPublishedGoal) > 0.5f;
+                bool refresh = Time.time - lastGoalPublishTime > 5f;
+                if (goalChanged || refresh)
+                {
+                    PublishNavGoal(currentGoal);
+                    lastPublishedGoal = currentGoal;
+                    lastGoalPublishTime = Time.time;
+                }
             }
         }
     }
@@ -326,11 +469,11 @@ public class MothSearchAlgorithm : MonoBehaviour
     private float gradientTimer = 0f;
     void HandleSurge()
     {
-        // 현재 위치가 농도 정점 → 누출원 확정
-        if (IsAtLocalMaximum())
+        // 현재 위치가 농도 정점 '연속 유지' → 검증 주행으로 확인
+        if (localMaxHold >= localMaxHoldSeconds)
         {
-            TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 누출원 도달! (국소 최대)");
+            TransitionTo(MothState.Verify);
+            Debug.Log($"[나방] 정점 후보 (국소 최대 {localMaxHoldSeconds}초 유지) → 검증 주행 시작");
             return;
         }
 
@@ -359,7 +502,11 @@ public class MothSearchAlgorithm : MonoBehaviour
         }
 
         // ★ 농도 그래디언트 방향으로 이동
-        if (gradientTimer >= 1.2f)
+        // Nav2 모드: 갱신 주기와 보폭을 키움 — 1.2초마다 2m짜리 goal을 갈아끼우면
+        // Nav2가 우회 경로를 실행할 시간이 없음 (계획→출발→취소 반복)
+        float gradInterval = useDirectMovement ? 1.2f : 3f;
+        float stepSize = useDirectMovement ? surgeStepSize : surgeStepSize * 2f;
+        if (gradientTimer >= gradInterval)
         {
             gradientTimer = 0f;
 
@@ -369,7 +516,7 @@ public class MothSearchAlgorithm : MonoBehaviour
             if (gradDir.magnitude > 0.01f)
             {
                 // 그래디언트 방향으로 이동
-                currentGoal = ValidateGoal(transform.position + gradDir * surgeStepSize);
+                currentGoal = ValidateGoal(transform.position + gradDir * stepSize);
                 lastSurgeDirection = gradDir;
                 Debug.Log($"[나방] Surge → 그래디언트 방향 ({gradDir.x:F2}, {gradDir.z:F2}), 농도:{debugConcentration:F1}");
             }
@@ -387,8 +534,11 @@ public class MothSearchAlgorithm : MonoBehaviour
     // Cast: 좌우 지그재그 탐색 + 농도 감지 시 그 방향으로 편향
     void HandleCast()
     {
-        // Surge 복귀는 stateTimer로 (리셋 안 됨)
-        if (stateTimer > 3f && gasSensor.IsGasDetected(detectionThreshold))
+        // 신호가 살아 있으면 빠르게 Surge 복귀 (3초 → 1초: 불필요한 지그재그 최소화)
+        // ★ 단, 함정 탈출 직후에는 그래디언트가 다시 함정을 가리키므로
+        //   escapeCommitUntil까지는 복귀 금지 — 도망 방향 유지
+        if (stateTimer > 1f && gasSensor.IsGasDetected(detectionThreshold)
+            && Time.time >= escapeCommitUntil)
         {
             TransitionTo(MothState.Surge);
             Debug.Log("[나방] 신호 재포착 → Surge");
@@ -404,8 +554,10 @@ public class MothSearchAlgorithm : MonoBehaviour
             Vector3 crossDir = Vector3.Cross(lastSurgeDirection, Vector3.up).normalized;
             if (crossDir.magnitude < 0.1f) crossDir = Vector3.right;
 
-            currentGoal = ValidateGoal(transform.position + crossDir * castStepSize * castDirection);
-            currentGoal += lastSurgeDirection * 0.5f;
+            // 오프셋까지 더한 '최종' 목표를 검증 (검증 후 더하면 함정/벽 체크가 무효화됨)
+            currentGoal = ValidateGoal(transform.position
+                + crossDir * castStepSize * castDirection
+                + lastSurgeDirection * 0.5f);
 
             castCount++;
             castDirection *= -1;
@@ -422,11 +574,11 @@ public class MothSearchAlgorithm : MonoBehaviour
     // Spiral: 나선 탐색 + 최고 농도 지점 추적
     void HandleSpiral()
     {
-        // 현재 위치가 농도 정점 → 누출원 확정
-        if (stateTimer > 2f && IsAtLocalMaximum())
+        // 현재 위치가 농도 정점 '연속 유지' → 검증 주행으로 확인
+        if (stateTimer > 2f && localMaxHold >= localMaxHoldSeconds)
         {
-            TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 누출원 도달! (국소 최대)");
+            TransitionTo(MothState.Verify);
+            Debug.Log($"[나방] 정점 후보 (국소 최대 {localMaxHoldSeconds}초 유지) → 검증 주행 시작");
             return;
         }
 
@@ -463,7 +615,7 @@ public class MothSearchAlgorithm : MonoBehaviour
         float spiralX = spiralCenter.x + Mathf.Cos(spiralAngle) * currentSpiralRadius;
         float spiralZ = spiralCenter.z + Mathf.Sin(spiralAngle) * currentSpiralRadius;
 
-        currentGoal = new Vector3(spiralX, transform.position.y, spiralZ);
+        currentGoal = ValidateGoal(new Vector3(spiralX, transform.position.y, spiralZ));
 
         // 나선 한 바퀴 돌았으면 → 최고 농도 지점 쪽으로 이동 시도
         if (spiralAngle > Mathf.PI * 2f && bestSpiralConc > highConcThreshold)
@@ -488,13 +640,19 @@ public class MothSearchAlgorithm : MonoBehaviour
         {
             // 도착 — 가스별 기준(dangerThreshold)으로 누출원 확정 여부 판단
             float confirmConc = plumeModel != null ? plumeModel.dangerThreshold : 40f;
+            // ★ 최소 농도 게이트: 이 밑이면 어떤 경우에도 확정 금지 (낮은 농도 오확정 방지)
+            float minConfirm = confirmConc * minConfirmFraction;
 
-            if (IsAtLocalMaximum() || bestConc >= confirmConc || returnCount >= maxReturnRetries)
+            bool concOk = bestConc >= minConfirm;
+            bool strongEvidence = IsAtLocalMaximum() || bestConc >= confirmConc;
+
+            if (concOk && (strongEvidence || returnCount >= maxReturnRetries))
             {
-                TransitionTo(MothState.SourceFound);
-                Debug.Log($"[나방] 최고점 도착 → 누출원 확정 (농도:{bestConc:F1}ppm, 재시도:{returnCount})");
+                // 바로 확정하지 않고 검증 주행으로 최종 확인
+                TransitionTo(MothState.Verify);
+                Debug.Log($"[나방] 최고점 도착 (농도:{bestConc:F1}ppm) → 검증 주행 시작");
             }
-            else
+            else if (returnCount < maxReturnRetries)
             {
                 // 아직 농도가 낮음 — 정점이 아닐 수 있으니 재탐색
                 returnCount++;
@@ -502,14 +660,91 @@ public class MothSearchAlgorithm : MonoBehaviour
                 TransitionTo(MothState.Surge);
                 Debug.Log($"[나방] 최고점 농도 부족({bestConc:F1}<{confirmConc:F1}ppm) → 재탐색 {returnCount}/{maxReturnRetries}");
             }
+            else
+            {
+                // 재시도 소진 + 농도도 부족 → 오확정 대신 탐색 리셋 (Cast로 넓게 재탐색)
+                Debug.Log($"[나방] 확정 보류 (농도 {bestConc:F1} < 최소 {minConfirm:F1}ppm) → 광역 재탐색");
+                returnCount = 0;
+                bestConc = 0f;
+                lastImproveTime = Time.time;
+                TransitionTo(MothState.Cast);
+            }
             return;
         }
 
-        // 복귀가 너무 오래 걸리면(장애물 등) 현 위치에서 확정
-        if (stateTimer > 12f)
+        // 복귀가 너무 오래 걸리면(장애물/우회 경로 등) — 현 위치 오확정 대신 재탐색
+        // (Nav2 우회 경로는 12초를 쉽게 넘김 → '가는 도중 아무 데서나 확정' 버그 방지)
+        if (stateTimer > 20f)
         {
+            returnCount++;
+            lastImproveTime = Time.time;
+            TransitionTo(MothState.Surge);
+            Debug.Log($"[나방] 복귀 시간 초과 → 재탐색 (재시도 {returnCount}/{maxReturnRetries})");
+        }
+    }
+
+    // Verify: 후보 지점 주위 웨이포인트를 실제로 돌며 센서 실측으로 정점 검증.
+    // 전부 중심보다 낮으면 → SourceFound 확정.
+    // 더 높은 곳을 발견하면 → 그쪽을 새 최고점으로 잡고 Surge 재개.
+    void HandleVerify()
+    {
+        // 검증 중 가스 자체가 죽으면 탐색으로 복귀
+        if (Time.time - lastDetectionTime > signalLostTimeout * 2f)
+        {
+            TransitionTo(MothState.Cast);
+            Debug.Log("[나방] 검증 중 신호 소실 → Cast");
+            return;
+        }
+
+        verifyWpTimer += Time.deltaTime;
+
+        // 현재 웨이포인트 목표
+        float angle = (360f / verifyPoints) * verifyIndex * Mathf.Deg2Rad;
+        Vector3 wp = verifyCenter + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * verifyRadius;
+        currentGoal = ValidateGoal(wp);
+
+        Vector3 toWp = wp - transform.position;
+        toWp.y = 0f;
+
+        bool arrived = toWp.magnitude < 0.6f;
+        bool timedOut = verifyWpTimer > verifyWpTimeout;
+
+        if (!arrived && !timedOut)
+            return;
+
+        if (arrived)
+        {
+            // ★ 실측: 로봇 센서가 지금 이 자리에서 읽은 농도
+            float measured = gasSensor.CurrentConcentration;
+            Debug.Log($"[나방] 검증 {verifyIndex + 1}/{verifyPoints} — 실측:{measured:F1} vs 중심:{verifyCenterConc:F1}ppm");
+
+            if (measured > verifyCenterConc * verifyMargin)
+            {
+                // 여기가 더 진함 → 정점 아님. 이쪽을 새 최고점으로 잡고 재탐색
+                bestConc = measured;
+                bestPos = transform.position;
+                lastImproveTime = Time.time;
+                TransitionTo(MothState.Surge);
+                Debug.Log($"[나방] 검증 실패 — 더 높은 농도({measured:F1}ppm) 발견 → Surge 재개");
+                return;
+            }
+        }
+        else
+        {
+            Debug.Log($"[나방] 검증 {verifyIndex + 1}/{verifyPoints} — 도달 실패(막힘), 스킵");
+        }
+
+        // 다음 웨이포인트
+        verifyIndex++;
+        verifyWpTimer = 0f;
+
+        if (verifyIndex >= verifyPoints)
+        {
+            // 전 방향 실측 완료 — 어디도 중심보다 높지 않음 → 누출원 확정
+            bestPos = verifyCenter;
+            bestConc = Mathf.Max(bestConc, verifyCenterConc);
             TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 복귀 시간 초과 → 현 위치에서 확정");
+            Debug.Log($"[나방] ★ 검증 완료 — 전 방향 농도 하락 확인 → 누출원 확정 ({verifyCenter.x:F1},{verifyCenter.z:F1})");
         }
     }
 
@@ -566,9 +801,12 @@ public class MothSearchAlgorithm : MonoBehaviour
     // ============================================================
 
     // 농도 가중평균 방향 — 작은 차이도 누적되어 방향을 잡음
+    // ★ 장애물 인지: 막힌 방향은 후보에서 제외 (가스 모델은 벽을 무시하고 퍼지므로
+    //   '탱크 너머 농도'에 이끌려 벽에 박는 것 방지)
     Vector3 ComputeGradientDirection()
     {
         Vector3 pos = transform.position;
+        float here = SampleConcentrationAt(pos);
         Vector3 weightedDir = Vector3.zero;
 
         // 여러 거리에서 샘플링 (가까운 곳 + 먼 곳)
@@ -582,13 +820,23 @@ public class MothSearchAlgorithm : MonoBehaviour
             {
                 float angle = (360f / sampleDirections) * i * Mathf.Deg2Rad;
                 Vector3 dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                Vector3 samplePos = pos + dir * dist;
 
-                float conc = SampleConcentrationAt(samplePos);
+                // 직접 이동 모드에서만 막힌 방향 제외.
+                // Nav2 모드는 장애물 너머 고농도도 유효한 목표 — 돌아가는 경로는 Nav2가 계획
+                // (이걸 빼면 그래디언트가 '열린 방향'으로만 왜곡돼 통로 우회 경로가 안 나옴)
+                if (useDirectMovement
+                    && Physics.SphereCast(pos + Vector3.up * 0.2f, 0.3f, dir, out RaycastHit _, dist))
+                    continue;
 
-                // 농도로 방향에 가중치 부여
-                // 농도가 높은 방향으로 벡터가 더 길어짐
-                weightedDir += dir * conc;
+                // ★ 기억된 함정 구역으로 향하는 방향도 제외 (무한루프 방지)
+                if (IsInTrapZone(pos + dir * dist))
+                    continue;
+
+                float conc = SampleConcentrationAt(pos + dir * dist);
+
+                // 현재 위치 대비 '증가량'으로 가중 (막힌 방향 제외로 대칭성이 깨지므로
+                // 절대 농도 가중을 쓰면 방향이 왜곡됨)
+                weightedDir += dir * (conc - here);
             }
         }
 
@@ -724,6 +972,13 @@ public class MothSearchAlgorithm : MonoBehaviour
             case MothState.Cast:
                 castCount = 0;
                 castDirection = 1;
+                castTimer = 0f;   // 진입 직후 묵은 타이머로 즉시 지그재그 나가는 것 방지
+                break;
+            case MothState.Verify:
+                verifyCenter = transform.position;
+                verifyCenterConc = gasSensor != null ? gasSensor.CurrentConcentration : 0f;
+                verifyIndex = 0;
+                verifyWpTimer = 0f;
                 break;
             case MothState.SourceFound:
                 resultRepublishTimer = 0f;   // 진입 즉시 첫 발행
@@ -763,41 +1018,82 @@ public class MothSearchAlgorithm : MonoBehaviour
         return nearestDir;
     }
 
-        // 장애물 검증 — goal이 벽 안이면 벽 앞으로 조정
+        // 장애물 검증 — goal이 벽 안/함정 구역이면 안전한 곳으로 조정
     Vector3 ValidateGoal(Vector3 goal)
     {
         Vector3 dir = goal - transform.position;
         float dist = dir.magnitude;
-        
+
+        // ★ Nav2 모드: 경로 계획은 Nav2 코스트맵의 몫 — Unity 레이캐스트로
+        //   goal을 끌어다 놓지 않는다. (벽 앞 보정 hit.point-0.6m이 goal을
+        //   '틈 입구'에 떨궈서 Nav2가 함정까지 성실히 데려다주는 버그 방지.
+        //   navfn tolerance:1.0이라 장애물 너머 goal도 근처 도달점으로 계획됨)
+        if (!useDirectMovement)
+        {
+            // ★ goal 지점만이 아니라 거기까지의 직선 구간 전체를 함정 체크.
+            //   (Nav2 보폭 4m면 goal이 함정 원 '너머'에 찍혀 통과되고,
+            //    Nav2 경로가 함정 한가운데를 관통하는 버그 방지)
+            int samples = Mathf.Max(1, Mathf.CeilToInt(dist / 0.5f));
+            for (int i = 1; i <= samples; i++)
+            {
+                Vector3 p = transform.position + dir * (i / (float)samples);
+                if (IsInTrapZone(p))
+                {
+                    Debug.Log($"[나방] (Nav2) 목표 경로가 함정 구역 통과 → 우회");
+                    return FindDetourGoal(dir.normalized);
+                }
+            }
+            return goal;
+        }
+
+        // ★ 최종 게이트: 목표가 함정 구역에 찍히면 무조건 우회 목표로 교체.
+        //   (Surge/Cast/Spiral/ReturnToBest 어디서 온 goal이든 여기서 걸러짐)
+        if (IsInTrapZone(goal))
+        {
+            Debug.Log($"[나방] 목표({goal.x:F1},{goal.z:F1})가 함정 구역 → 우회");
+            return FindDetourGoal(dir.normalized);
+        }
+
         if (Physics.SphereCast(transform.position, 0.3f, dir.normalized, out RaycastHit hit, dist))
         {
             if (hit.distance < 1f)
-            {
-                // 그래디언트 방향과 가장 가까운 열린 방향 탐색
-                float bestScore = -2f;
-                Vector3 bestGoal = transform.position + transform.forward;
-                
-                for (int i = 0; i < 12; i++)
-                {
-                    float angle = (360f / 12) * i;
-                    Vector3 testDir = Quaternion.Euler(0, angle, 0) * Vector3.forward;
-                    
-                    if (!Physics.SphereCast(transform.position, 0.3f, testDir, out RaycastHit _, surgeStepSize))
-                    {
-                        float alignment = Vector3.Dot(testDir, dir.normalized);
-                        if (alignment > bestScore)
-                        {
-                            bestScore = alignment;
-                            bestGoal = transform.position + testDir * surgeStepSize;
-                        }
-                    }
-                }
-                Debug.Log($"[나방] 벽 우회 → 정렬도:{bestScore:F2}");
-                return bestGoal;
-            }
-            return hit.point - dir.normalized * 0.6f;
+                return FindDetourGoal(dir.normalized);
+
+            Vector3 adjusted = hit.point - dir.normalized * 0.6f;
+            // 벽 앞 보정 지점이 함정 구역이면 그것도 우회
+            if (IsInTrapZone(adjusted))
+                return FindDetourGoal(dir.normalized);
+            return adjusted;
         }
         return goal;
+    }
+
+    // 원하는 방향과 가장 가까운 '열려 있고 함정도 아닌' 방향으로 한 걸음
+    Vector3 FindDetourGoal(Vector3 desiredDir)
+    {
+        float bestScore = -2f;
+        Vector3 bestGoal = transform.position + FindMostOpenDirection() * surgeStepSize;
+
+        for (int i = 0; i < 12; i++)
+        {
+            float angle = (360f / 12) * i;
+            Vector3 testDir = Quaternion.Euler(0, angle, 0) * Vector3.forward;
+            Vector3 testGoal = transform.position + testDir * surgeStepSize;
+
+            if (IsInTrapZone(testGoal))
+                continue;
+            if (Physics.SphereCast(transform.position, 0.3f, testDir, out RaycastHit _, surgeStepSize))
+                continue;
+
+            float alignment = Vector3.Dot(testDir, desiredDir);
+            if (alignment > bestScore)
+            {
+                bestScore = alignment;
+                bestGoal = testGoal;
+            }
+        }
+        Debug.Log($"[나방] 우회 목표 → 정렬도:{bestScore:F2}");
+        return bestGoal;
     }
 
     // 가장 열린 방향 탐색 (통로 자동 감지)
@@ -897,6 +1193,13 @@ public class MothSearchAlgorithm : MonoBehaviour
                 Gizmos.color = Color.red;
                 Gizmos.DrawSphere(bestSpiralPos, 0.3f);
                 break;
+            case MothState.Verify:
+                // 검증 주행 — 중심(주황)과 검증 원
+                Gizmos.color = new Color(1f, 0.5f, 0f);
+                Gizmos.DrawSphere(verifyCenter, 0.3f);
+                Gizmos.DrawWireSphere(verifyCenter, verifyRadius);
+                Gizmos.DrawLine(transform.position, currentGoal);
+                break;
             case MothState.SourceFound:
                 Gizmos.color = Color.red;
                 Gizmos.DrawSphere(transform.position, 0.5f);
@@ -906,5 +1209,13 @@ public class MothSearchAlgorithm : MonoBehaviour
         // 목표 지점
         Gizmos.color = Color.magenta;
         Gizmos.DrawSphere(currentGoal, 0.3f);
+
+        // 기억된 함정 구역 (빨간 원)
+        Gizmos.color = new Color(1f, 0f, 0f, 0.6f);
+        foreach (var t in trapPoints)
+        {
+            float r = trapRadius * (1f + 0.5f * (t.hits - 1));
+            Gizmos.DrawWireSphere(t.pos, r);
+        }
     }
 }
