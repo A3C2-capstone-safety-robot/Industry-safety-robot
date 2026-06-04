@@ -12,6 +12,7 @@ public enum MothState
     Surge,          // 추적 — 농도 그래디언트 방향으로 이동
     Cast,           // 탐색 — 좌우 지그재그 (가스 신호 소실 시)
     Spiral,         // 나선 — 고농도 구역에서 누출원 정밀 탐색
+    ReturnToBest,   // 수렴 후 최고 농도 지점으로 복귀
     SourceFound     // 누출원 도달
 }
 
@@ -43,6 +44,16 @@ public class MothSearchAlgorithm : MonoBehaviour
     public float spiralGrowth = 0.2f;            // Spiral 반경 증가량
     public float sourceThreshold = 80f;          // 누출원 도달 판정 농도 (ppm) — 절대 임계값(보조)
     public float localMaxEpsilon = 0.5f;         // 국소최대 판정 여유(주변보다 이만큼 안 높아도 정점 인정)
+    public float convergeSeconds = 6f;           // 이 시간 동안 농도 개선 없으면 최고점으로 복귀
+    public float arrivalRadius = 1f;             // bestPos 도달 판정 반경 (m) — 이동단위(2m)·σ 고려
+    public int maxReturnRetries = 2;             // bestPos 도착 후 재탐색(Surge) 허용 횟수
+
+    // 수렴 판정용 — 탐색 중 최고 농도 지점 기억
+    private float bestConc = 0f;
+    private Vector3 bestPos;
+    private float lastImproveTime = 0f;
+    private float emaConc = 0f;                  // 노이즈 억제용 지수이동평균 농도
+    private int returnCount = 0;                 // ReturnToBest → Surge 재시도 횟수
 
     [Header("감지 임계값")]
     public float detectionThreshold = 3f;        // 가스 감지 최소 농도 (ppm)
@@ -146,6 +157,26 @@ public class MothSearchAlgorithm : MonoBehaviour
         }
 
         debugConcentration = gasSensor.CurrentConcentration;
+
+        // 노이즈 억제 — 지수이동평균(EMA) 농도 (순간 노이즈 ±2ppm이 bestConc를 부풀리는 것 방지)
+        emaConc = Mathf.Lerp(emaConc, gasSensor.CurrentConcentration, Time.deltaTime * 1.5f);
+
+        // 탐색 중 최고 농도 지점 추적 (의미 있는 개선만 갱신 → 수렴 판정)
+        if (currentState == MothState.Surge || currentState == MothState.Cast
+            || currentState == MothState.Spiral || currentState == MothState.ReturnToBest)
+        {
+            if (emaConc > bestConc + Mathf.Max(0.3f, bestConc * 0.05f))
+            {
+                bestConc = emaConc;
+                bestPos = transform.position;
+                lastImproveTime = Time.time;
+            }
+        }
+
+        // Cast(신호 소실 탐색) 중에는 수렴 시계 정지 — 헤매는 시간이 조기 수렴으로 이어지지 않게
+        if (currentState == MothState.Cast)
+            lastImproveTime += Time.deltaTime;
+
         stateTimer += Time.deltaTime;
         gradientTimer += Time.deltaTime;  // ← 이 한 줄 추가
 
@@ -186,6 +217,7 @@ public class MothSearchAlgorithm : MonoBehaviour
             case MothState.Surge:   HandleSurge();       break;
             case MothState.Cast:    HandleCast();        break;
             case MothState.Spiral:  HandleSpiral();      break;
+            case MothState.ReturnToBest: HandleReturnToBest(); break;
             case MothState.SourceFound: HandleSourceFound(); break;
         }
 
@@ -261,6 +293,11 @@ public class MothSearchAlgorithm : MonoBehaviour
         {
             searchStartTime = Time.time;
             searchStartPos = transform.position;
+            bestConc = 0f;                       // 최고점 추적 초기화
+            bestPos = transform.position;
+            lastImproveTime = Time.time;
+            emaConc = gasSensor.CurrentConcentration;
+            returnCount = 0;
             TransitionTo(MothState.Surge);
             Debug.Log($"[나방] ★ 탐색 시작! searchStartTime={searchStartTime:F2}, Time.time={Time.time:F2}, 농도:{debugConcentration:F1}ppm");
         }
@@ -289,11 +326,19 @@ public class MothSearchAlgorithm : MonoBehaviour
     private float gradientTimer = 0f;
     void HandleSurge()
     {
-        // 누출원 도달: 국소 최대(농도 정점)만 사용 — 절대 ppm 기준 없음
+        // 현재 위치가 농도 정점 → 누출원 확정
         if (IsAtLocalMaximum())
         {
             TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 누출원 도달! (농도 정점)");
+            Debug.Log("[나방] 누출원 도달! (국소 최대)");
+            return;
+        }
+
+        // 수렴(개선 없음) → 그 자리에서 멈추지 말고 최고 농도 지점으로 복귀
+        if (HasConverged())
+        {
+            TransitionTo(MothState.ReturnToBest);
+            Debug.Log($"[나방] 수렴 → 최고점({bestPos.x:F1},{bestPos.z:F1}) 복귀");
             return;
         }
 
@@ -377,11 +422,19 @@ public class MothSearchAlgorithm : MonoBehaviour
     // Spiral: 나선 탐색 + 최고 농도 지점 추적
     void HandleSpiral()
     {
-        // 누출원 도달: 국소 최대(농도 정점)만 사용
+        // 현재 위치가 농도 정점 → 누출원 확정
         if (stateTimer > 2f && IsAtLocalMaximum())
         {
             TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 누출원 도달! (농도 정점)");
+            Debug.Log("[나방] 누출원 도달! (국소 최대)");
+            return;
+        }
+
+        // 수렴 → 최고 농도 지점으로 복귀
+        if (stateTimer > 2f && HasConverged())
+        {
+            TransitionTo(MothState.ReturnToBest);
+            Debug.Log($"[나방] Spiral 수렴 → 최고점 복귀");
             return;
         }
 
@@ -423,16 +476,51 @@ public class MothSearchAlgorithm : MonoBehaviour
         }
     }
 
+    // ReturnToBest: 관측된 최고 농도 지점으로 물리적으로 이동 후 누출원 확정
+    void HandleReturnToBest()
+    {
+        currentGoal = ValidateGoal(bestPos);
+
+        Vector3 toBest = bestPos - transform.position;
+        toBest.y = 0f;
+
+        if (toBest.magnitude <= arrivalRadius)
+        {
+            // 도착 — 가스별 기준(dangerThreshold)으로 누출원 확정 여부 판단
+            float confirmConc = plumeModel != null ? plumeModel.dangerThreshold : 40f;
+
+            if (IsAtLocalMaximum() || bestConc >= confirmConc || returnCount >= maxReturnRetries)
+            {
+                TransitionTo(MothState.SourceFound);
+                Debug.Log($"[나방] 최고점 도착 → 누출원 확정 (농도:{bestConc:F1}ppm, 재시도:{returnCount})");
+            }
+            else
+            {
+                // 아직 농도가 낮음 — 정점이 아닐 수 있으니 재탐색
+                returnCount++;
+                lastImproveTime = Time.time;
+                TransitionTo(MothState.Surge);
+                Debug.Log($"[나방] 최고점 농도 부족({bestConc:F1}<{confirmConc:F1}ppm) → 재탐색 {returnCount}/{maxReturnRetries}");
+            }
+            return;
+        }
+
+        // 복귀가 너무 오래 걸리면(장애물 등) 현 위치에서 확정
+        if (stateTimer > 12f)
+        {
+            TransitionTo(MothState.SourceFound);
+            Debug.Log("[나방] 복귀 시간 초과 → 현 위치에서 확정");
+        }
+    }
+
     // SourceFound: 누출원 도달 — 정지 + ROS 알림
+    private float resultRepublishTimer = 0f;
     void HandleSourceFound()
     {
         currentGoal = transform.position;
 
         // 매 프레임 속도 0 발행 (로봇 완전 정지)
         PublishStopCommand();
-
-        // (절대 임계 기반 Surge 복귀 제거 — 국소최대 기준 사용.
-        //  가스가 완전히 사라지면 아래 Idle 복귀가 처리)
 
         // 가스 완전 소실 → Idle
         if (stateTimer > 3f && !gasSensor.IsGasDetected(detectionThreshold))
@@ -443,21 +531,32 @@ public class MothSearchAlgorithm : MonoBehaviour
             return;
         }
 
-        if (stateTimer < 0.1f)
+        // 결과 발행 — 2초 주기 재발행.
+        // (일회성 발행은 프레임 스파이크/메시지 유실 시 영영 누락됨.
+        //  patrol_navigator가 수신 후 모드를 바꾸면 MissionCoordinator가
+        //  이 컴포넌트를 끄므로 재발행은 자동으로 멈춤 = ack 역할)
+        resultRepublishTimer -= Time.deltaTime;
+        if (resultRepublishTimer <= 0f)
         {
+            resultRepublishTimer = 2f;
+
             string gasTypeName = plumeModel != null ? plumeModel.gasType.ToString() : "UNKNOWN";
+            // 가스별 위험 판정 동봉 — patrol 쪽이 DANGER 알림을 놓쳐도 대피 가능
+            string dangerFlag = (plumeModel != null && bestConc >= plumeModel.dangerThreshold)
+                                ? "DANGER" : "OK";
 
             Debug.Log($"[나방] === 누출원 위치 특정 ===\n" +
-                      $"  가스: {gasTypeName}\n" +
-                      $"  농도: {gasSensor.CurrentConcentration:F1} ppm\n" +
-                      $"  위치: ({transform.position.x:F1}, {transform.position.y:F1}, {transform.position.z:F1})");
+                      $"  가스: {gasTypeName} ({dangerFlag})\n" +
+                      $"  농도(최고): {bestConc:F1} ppm\n" +
+                      $"  위치(최고점): ({bestPos.x:F1}, {bestPos.y:F1}, {bestPos.z:F1})");
 
-            ros.RegisterPublisher<StringMsg>("/moth_search/result");
             ros.Publish("/moth_search/result", new StringMsg
             {
+                // 로봇 현재 위치가 아니라 '관측된 최고 농도 지점'을 누출원으로 보고
                 data = $"SOURCE_FOUND|{gasTypeName}|" +
-                       $"{gasSensor.CurrentConcentration:F1}|" +
-                       $"{transform.position.x:F2},{transform.position.y:F2},{transform.position.z:F2}"
+                       $"{bestConc:F1}|" +
+                       $"{bestPos.x:F2},{bestPos.y:F2},{bestPos.z:F2}|" +
+                       $"{dangerFlag}"
             });
         }
     }
@@ -530,8 +629,17 @@ public class MothSearchAlgorithm : MonoBehaviour
             float c = SampleConcentrationAt(pos + dir * sampleDistance);
             if (c > maxNeighbor) maxNeighbor = c;
         }
-        // 여기가 주변 어디보다도 (epsilon 여유 내) 높음 → 농도 정점
-        return here + localMaxEpsilon >= maxNeighbor;
+        // 여기가 주변 어디보다도 (여유 내) 높음 → 농도 정점
+        // 여유는 절대값과 현재 농도의 8% 중 큰 쪽 (농도 스케일에 무관하게 동작)
+        float eps = Mathf.Max(localMaxEpsilon, here * 0.08f);
+        return here + eps >= maxNeighbor;
+    }
+
+    // 수렴 판정: 한동안 더 높은 농도를 못 찾음 = 정점 근처를 맴도는 중 → 최고점을 누출원으로 확정
+    bool HasConverged()
+    {
+        return bestConc > detectionThreshold
+               && Time.time - lastImproveTime > convergeSeconds;
     }
 
     // ============================================================
@@ -579,6 +687,8 @@ public class MothSearchAlgorithm : MonoBehaviour
         switch (newState)
         {
             case MothState.Surge:
+                // Cast/ReturnToBest에서 복귀 시 수렴 시계 리셋 (복귀 첫 프레임 즉시 수렴 방지)
+                lastImproveTime = Time.time;
                 // ★ 즉시 첫 목표 설정 (1.2초 대기 없이 바로 움직이도록)
                 Vector3 initGrad = ComputeGradientDirection();
                 if (initGrad.magnitude > 0.01f)
@@ -607,6 +717,9 @@ public class MothSearchAlgorithm : MonoBehaviour
             case MothState.Cast:
                 castCount = 0;
                 castDirection = 1;
+                break;
+            case MothState.SourceFound:
+                resultRepublishTimer = 0f;   // 진입 즉시 첫 발행
                 break;
             case MothState.Spiral:
                 spiralAngle = 0f;
@@ -764,6 +877,11 @@ public class MothSearchAlgorithm : MonoBehaviour
             case MothState.Cast:
                 Gizmos.color = Color.yellow;
                 Gizmos.DrawLine(transform.position, currentGoal);
+                break;
+            case MothState.ReturnToBest:
+                Gizmos.color = Color.blue;
+                Gizmos.DrawLine(transform.position, bestPos);
+                Gizmos.DrawWireSphere(bestPos, arrivalRadius);
                 break;
             case MothState.Spiral:
                 Gizmos.color = Color.cyan;

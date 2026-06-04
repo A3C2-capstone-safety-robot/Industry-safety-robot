@@ -22,8 +22,8 @@ public class GaussianPlumeModel : MonoBehaviour
     public float windSpeed = 1.5f;         // m/s
 
     [Header("확산 파라미터")]
-    public float sigmaBase = 0.5f;         // 초기 확산 반경
-    public float sigmaGrowth = 0.05f;      // 시간에 따른 확산 증가율
+    public float sigmaBase = 0.5f;         // 누출원에서의 확산 반경 (m)
+    public float sigmaGrowth = 0.3f;       // 거리당 확산 증가율 (m/m) — 현실 플룸: σ는 거리의 함수
 
     [Header("Y축 거동 (자동 설정됨)")]
     public float verticalSpeed = 0f;       // + 상승, - 하강 (m/s)
@@ -57,8 +57,8 @@ public class GaussianPlumeModel : MonoBehaviour
                 emissionRate = 60f;         // 피크 농도 — IDLH 언저리(현실적)
                 verticalSpeed = -0.3f;      // 하강
                 verticalSigma = 1.5f;       // Y축 확산
-                sigmaBase = 2f;             // 초기 확산 반경 (m) — 좁게(국소)
-                sigmaGrowth = 0.05f;        // 천천히 조금만 커짐
+                sigmaBase = 2f;             // 누출원 확산 반경 (m) — 좁게(국소)
+                sigmaGrowth = 0.3f;         // 거리당 퍼짐 — 근처는 뾰족, 멀리는 완만
                 alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시 (노이즈 2 위)
                 dangerThreshold = 20f;      // 위험·대피 (고경보 수준 — IDLH 전에 대피)
                 buildupTime = 40f;          // 무거워서 천천히 축적
@@ -70,7 +70,7 @@ public class GaussianPlumeModel : MonoBehaviour
                 verticalSpeed = 0.5f;       // 상승
                 verticalSigma = 2f;         // Y축 넓게
                 sigmaBase = 3f;             // 가벼워 약간 더 넓게(그래도 국소)
-                sigmaGrowth = 0.1f;         // 천천히 조금만 커짐
+                sigmaGrowth = 0.4f;         // 가벼운 가스 — 더 빨리 퍼짐
                 alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시
                 dangerThreshold = 100f;     // 위험·대피 (고경보 수준, ~20% LEL 비례)
                 buildupTime = 25f;          // 가벼워 비교적 빨리 퍼짐
@@ -82,7 +82,7 @@ public class GaussianPlumeModel : MonoBehaviour
                 verticalSpeed = 0.15f;      // 약간 상승
                 verticalSigma = 1.8f;       // 중간 Y축 확산
                 sigmaBase = 2.5f;           // 중간(국소)
-                sigmaGrowth = 0.07f;        // 천천히 조금만 커짐
+                sigmaGrowth = 0.35f;        // 중간 퍼짐
                 alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시
                 dangerThreshold = 50f;      // 위험·대피 (고경보 수준)
                 buildupTime = 30f;          // 중간 속도로 누출
@@ -106,22 +106,24 @@ public class GaussianPlumeModel : MonoBehaviour
         float dz = z - src.z;
         float dist = Mathf.Sqrt(dx * dx + dz * dz);
 
-        // 시간에 따른 플룸 성장 (5초에 걸쳐 서서히 확대)
+        // 농도 축적 (buildupTime에 걸쳐 준정상상태 도달)
         float timeFactor = Mathf.Clamp01(elapsed / Mathf.Max(0.1f, buildupTime));
 
-        // 확산 반경: 시간에 따라 천천히 커짐
-        float sigma = sigmaBase + sigmaGrowth * Mathf.Min(elapsed, 20f);
+        // ★ 현실 플룸: σ는 시간이 아니라 '누출원에서의 거리'의 함수 (Pasquill-Gifford 근사)
+        //   근처는 좁고 뾰족(정밀 위치 특정), 멀리는 넓고 완만(원거리 감지)
+        float sigma = sigmaBase + sigmaGrowth * dist;
 
-        // ★ 핵심: 거리에 따른 지수 감쇠 (가까울수록 높고, 멀수록 급격히 감소)
-        float distConc = emissionRate * Mathf.Exp(-dist * dist / (2f * sigma * sigma));
+        // 거리 감쇠 × 질량 보존 항(sigmaBase/sigma) — σ가 커진 만큼 희석
+        float distConc = emissionRate * (sigmaBase / sigma)
+                         * Mathf.Exp(-dist * dist / (2f * sigma * sigma));
 
         // 바람 방향 보너스 (풍하 쪽이 약간 더 높음)
         Vector2 windNorm = windDirection.normalized;
         float downwind = dx * windNorm.x + dz * windNorm.y;
         float windBonus = 1f + Mathf.Max(0f, downwind / (sigma + 1f)) * 0.3f;
 
-        // Y축 가우시안 (가스 수직 거동)
-        float sigmaY = verticalSigma + sigmaGrowth * elapsed * 0.3f;
+        // Y축 가우시안 (가스 수직 거동) — 수직 퍼짐도 거리 비례
+        float sigmaY = verticalSigma + sigmaGrowth * dist * 0.5f;
         float cloudY = src.y + verticalSpeed * Mathf.Min(elapsed, 15f);
         float distY = (y - cloudY) * (y - cloudY);
         float vertConc = Mathf.Exp(-distY / (2f * sigmaY * sigmaY));
@@ -142,10 +144,11 @@ public class GaussianPlumeModel : MonoBehaviour
         float dist = Mathf.Sqrt(dx * dx + dz * dz);
 
         float timeFactor = Mathf.Clamp01(elapsed / Mathf.Max(0.1f, buildupTime));
-        float sigma = sigmaBase + sigmaGrowth * Mathf.Min(elapsed, 20f);
 
-        // 거리에 따른 지수 감쇠
-        float distConc = emissionRate * Mathf.Exp(-dist * dist / (2f * sigma * sigma));
+        // 거리 기반 σ + 질량 보존 (3D 버전과 동일 기준)
+        float sigma = sigmaBase + sigmaGrowth * dist;
+        float distConc = emissionRate * (sigmaBase / sigma)
+                         * Mathf.Exp(-dist * dist / (2f * sigma * sigma));
 
         // 바람 보너스
         Vector2 windNorm = windDirection.normalized;

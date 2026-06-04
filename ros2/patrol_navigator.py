@@ -69,7 +69,9 @@ class PatrolNavigator(Node):
         self._gas_danger = False
         self._gas_start_time = None
         self._last_gas_seen = None
-        self.gas_lost_timeout = 15.0   # 이 시간 동안 가스 미검출 → 상황 종료로 판단(초)
+        self.gas_lost_timeout = 30.0   # 이 시간 동안 가스 미검출 → 상황 종료로 판단(초)
+                                       # (Cast/복귀 중 농도가 임계 밑으로 떨어져 알림이 끊길 수 있어 여유 필요)
+        self._last_source_handled = 0.0  # SOURCE_FOUND 중복 처리 방지 (Unity가 2초 주기 재발행)
         self.gas_timeout = 180.0       # 하드캡: 이 시간 넘게 못 찾으면 실패 보고 후 복귀(초)
 
         self.patrol_active = True
@@ -204,16 +206,25 @@ class PatrolNavigator(Node):
         self.publish_mode('GAS_TRACKING')
 
     def moth_result_callback(self, msg):
-        # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z"
-        if not self.gas_tracking:
-            return
+        # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z|DANGER"
         text = msg.data
         if 'SOURCE_FOUND' not in text:
             return
+        # ★ gas_tracking 플래그로 거르지 않음 — 추적 중 가스 알림이 잠시 끊겨
+        #   타임아웃으로 플래그가 풀린 뒤 결과가 도착해도 레포트/대피는 수행해야 함.
+        #   중복(재발행)은 쿨다운으로 차단.
+        now = time.time()
+        if now - self._last_source_handled < 15.0:
+            return
+        if self.evacuating:
+            return
+        self._last_source_handled = now
+
         parts = text.split('|')
         gtype = parts[1] if len(parts) > 1 else '미상'
         conc = parts[2] if len(parts) > 2 else '?'
         coord = parts[3] if len(parts) > 3 else '?'
+        danger_flag = parts[4] if len(parts) > 4 else ''
         zone = '미상'
         coord_str = coord
         try:
@@ -224,7 +235,8 @@ class PatrolNavigator(Node):
         except (ValueError, IndexError):
             pass
 
-        need_evac = self._gas_danger
+        # 추적 중 DANGER 알림을 받았거나, Unity가 가스별 위험 기준 초과로 판정했으면 대피
+        need_evac = self._gas_danger or danger_flag == 'DANGER'
         report2 = ('[누출원발견] 종류:%s | 농도:%sppm | 좌표:%s | 구역:%s | 대피:%s'
                    % (gtype, conc, coord_str, zone, '필요' if need_evac else '불필요'))
         self.publish_status(report2)
@@ -446,3 +458,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+# EOF
