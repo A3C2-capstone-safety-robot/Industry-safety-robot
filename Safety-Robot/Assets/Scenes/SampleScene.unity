@@ -1259,7 +1259,7 @@ MonoBehaviour:
   distanceWeight: 1
   infoGainWeight: 2
   safetyRadius: 2
-  minInfoGain: 5
+  minInfoGain: 2
   visitedPenaltyWeight: 3
   visitedPenaltyRadius: 2
   pathBlockSize: 1

@@ -65,6 +65,8 @@ class PatrolNavigator(Node):
         self.max_temp = 180.0
         self.overheat_cooldown = 15.0
         self._overheat_reported = {}
+        self.gas_tracking = False
+        self._gas_danger = False
 
         self.patrol_active = True
         self.evacuating = False
@@ -79,8 +81,10 @@ class PatrolNavigator(Node):
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10, callback_group=cb)
         self.create_subscription(String, '/thermal_alerts', self.thermal_callback, 10, callback_group=cb)
         self.create_subscription(String, '/gas_alert', self.gas_callback, 10, callback_group=cb)
+        self.create_subscription(String, '/moth_search/result', self.moth_result_callback, 10, callback_group=cb)
 
         self._status_pub = self.create_publisher(String, '/robot_status', 10)
+        self._mode_pub = self.create_publisher(String, '/robot_mode', 10)
 
         self.inspection_points = self.load_inspection_points()
         self.get_logger().info('점검 지점 %d개 로드 완료' % len(self.inspection_points))
@@ -155,21 +159,78 @@ class PatrolNavigator(Node):
             self.get_logger().warn('🔥 %s' % report)
 
     def gas_callback(self, msg):
+        # 형식: "[DANGER] NH3 감지: 52.3 ppm @ 위치(x, y, z)"
         text = msg.data
-        is_danger = 'DANGER' in text.upper() or '[위험]' in text
-        if not is_danger:
+        if '감지' not in text:
             return
+        is_danger = 'DANGER' in text.upper() or '[위험]' in text
         with self._lock:
-            if self.evacuating:
+            if self.evacuating or self.gas_tracking:
                 return
-            self.evacuating = True
+            self.gas_tracking = True
             self.patrol_active = False
-        nearest = self.find_nearest_door()
+            self._gas_danger = is_danger
+
+        gtype = self._search(r'\]\s*(\S+)\s*감지', text, '미상')
+        conc = self._search(r'([\d.]+)\s*ppm', text, '?')
         zone = get_zone(self.current_x, self.current_y)
-        report = '[가스] %s | 구역:%s | 대피 → %s' % (text[:60], zone, nearest['name'])
-        self.publish_status(report)
-        self.get_logger().warn('🚨 %s' % report)
-        threading.Thread(target=self.evacuate, args=(nearest,), daemon=True).start()
+        report1 = ('[가스감지] 종류:%s | 농도:%sppm | 구역:%s | 누출원 추적 시작'
+                   % (gtype, conc, zone))
+        self.publish_status(report1)
+        self.get_logger().warn('🟡 %s' % report1)
+        # 추적 모드로 전환 → Unity 코디네이터가 MothSearch 켬, 순찰은 멈춤
+        self.publish_mode('GAS_TRACKING')
+
+    def moth_result_callback(self, msg):
+        # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z"
+        if not self.gas_tracking:
+            return
+        text = msg.data
+        if 'SOURCE_FOUND' not in text:
+            return
+        parts = text.split('|')
+        gtype = parts[1] if len(parts) > 1 else '미상'
+        conc = parts[2] if len(parts) > 2 else '?'
+        coord = parts[3] if len(parts) > 3 else '?'
+        zone = '미상'
+        coord_str = coord
+        try:
+            ux, uy, uz = [float(v) for v in coord.split(',')]
+            rx, ry = uz, -ux  # Unity → ROS 좌표
+            zone = get_zone(rx, ry)
+            coord_str = '(%.1f, %.1f)' % (rx, ry)
+        except (ValueError, IndexError):
+            pass
+
+        need_evac = self._gas_danger
+        report2 = ('[누출원발견] 종류:%s | 농도:%sppm | 좌표:%s | 구역:%s | 대피:%s'
+                   % (gtype, conc, coord_str, zone, '필요' if need_evac else '불필요'))
+        self.publish_status(report2)
+        self.get_logger().warn('🔴 %s' % report2)
+
+        self.gas_tracking = False
+        if need_evac:
+            with self._lock:
+                do_evac = not self.evacuating
+                if do_evac:
+                    self.evacuating = True
+                    self.patrol_active = False
+            self.publish_mode('EVACUATING')
+            nearest = self.find_nearest_door()
+            if do_evac:
+                threading.Thread(target=self.evacuate, args=(nearest,), daemon=True).start()
+        else:
+            self.patrol_active = True
+            self.publish_mode('PATROL')
+
+    def publish_mode(self, mode):
+        m = String()
+        m.data = mode
+        self._mode_pub.publish(m)
+
+    def _search(self, pattern, text, default):
+        mt = re.search(pattern, text)
+        return mt.group(1) if mt else default
 
     def publish_status(self, text):
         msg = String()
@@ -244,6 +305,8 @@ class PatrolNavigator(Node):
             self.evacuating = False
             self.patrol_active = True
         self._overheat_reported.clear()
+        self.gas_tracking = False
+        self.publish_mode('PATROL')
         self.get_logger().info('🔄 순찰 재개!')
 
     def _interrupted(self):
