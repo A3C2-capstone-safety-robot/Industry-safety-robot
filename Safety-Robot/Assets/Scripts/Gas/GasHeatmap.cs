@@ -14,9 +14,10 @@ public class GasHeatmap : MonoBehaviour
     public int resolution = 128;                   // 텍스처 해상도 (128x128)
     public float updateInterval = 0.5f;            // 업데이트 주기 (초)
 
-    [Header("색상 범위")]
-    public float minConcentration = 1f;            // 이 이하는 투명
-    public float maxConcentration = 100f;          // 이 이상은 최대 색상
+    [Header("색상 범위 — 가스별 위험도(dangerThreshold 대비 비율) 기준")]
+    [Tooltip("위험도 = 농도 ÷ 해당 가스의 dangerThreshold. 1.0 = 위험 임계 도달")]
+    public float minHazardRatio = 0.05f;           // 이 이하는 투명 (위험 임계의 5%)
+    public float maxHazardRatio = 1.5f;            // 이 이상은 최대 색상(빨강)
 
     [Header("표시 설정")]
     public bool showHeatmap = true;
@@ -109,16 +110,18 @@ public class GasHeatmap : MonoBehaviour
                 float worldX = startX + x * step;
                 float worldZ = startZ + y * step;
 
-                // 모든 활성 누출원의 농도 합산
-                float totalConc = 0f;
+                // 모든 활성 누출원의 '위험도' 합산 — 가스별 dangerThreshold로 정규화
+                // (H2S 20ppm과 LNG 100ppm이 같은 빨강 = 같은 위험 수준)
+                float totalHazard = 0f;
                 for (int i = 0; i < allPlumes.Length; i++)
                 {
                     if (allPlumes[i] == null || !allPlumes[i].isLeaking) continue;
-                    totalConc += allPlumes[i].GetConcentration(worldX, sampleY, worldZ);
+                    float conc = allPlumes[i].GetConcentration(worldX, sampleY, worldZ);
+                    totalHazard += conc / Mathf.Max(1f, allPlumes[i].dangerThreshold);
                 }
 
-                // 농도 → 색상 변환
-                colorBuffer[y * resolution + x] = ConcentrationToColor(totalConc);
+                // 위험도 → 색상 변환
+                colorBuffer[y * resolution + x] = HazardToColor(totalHazard);
             }
         }
 
@@ -126,15 +129,15 @@ public class GasHeatmap : MonoBehaviour
         heatmapTexture.Apply();
     }
 
-    // 농도 값을 히트맵 색상으로 변환
-    // 낮음(파랑) → 중간(초록→노랑) → 높음(빨강)
-    Color ConcentrationToColor(float concentration)
+    // 위험도(danger 임계 대비 비율)를 히트맵 색상으로 변환
+    // 낮음(파랑) → 중간(초록→노랑) → 높음(빨강=위험 임계 초과)
+    Color HazardToColor(float hazardRatio)
     {
-        if (concentration < minConcentration)
+        if (hazardRatio < minHazardRatio)
             return Color.clear; // 투명
 
         // 0~1로 정규화
-        float t = Mathf.Clamp01((concentration - minConcentration) / (maxConcentration - minConcentration));
+        float t = Mathf.Clamp01((hazardRatio - minHazardRatio) / (maxHazardRatio - minHazardRatio));
 
         Color color;
 

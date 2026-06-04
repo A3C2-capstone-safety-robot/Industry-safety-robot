@@ -16,6 +16,7 @@ import time
 import threading
 
 
+# 기본 출구 좌표 — exit_doors.yaml(teach_doors.py로 티칭)이 있으면 그쪽이 우선
 DOOR_POSITIONS = [
     {'name': 'exit_door_01_A', 'x': -8.55,  'y': 16.0},
     {'name': 'exit_door_01_B', 'x': 15.0,   'y': -15.0},
@@ -94,6 +95,35 @@ class PatrolNavigator(Node):
 
         self.inspection_points = self.load_inspection_points()
         self.get_logger().info('점검 지점 %d개 로드 완료' % len(self.inspection_points))
+
+        self.doors = self.load_exit_doors()
+        self.get_logger().info('대피 출구 %d개 로드 완료' % len(self.doors))
+
+    def load_exit_doors(self):
+        """teach_doors.py로 티칭한 exit_doors.yaml 우선, 없으면 내장 기본 좌표."""
+        doors_yaml = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'exit_doors.yaml')
+        if not os.path.exists(doors_yaml):
+            self.get_logger().warn(
+                'exit_doors.yaml 없음 — 내장 기본 출구 좌표 사용 '
+                '(맵에 안 맞으면 teach_doors.py로 티칭하세요)')
+            return list(DOOR_POSITIONS)
+        with open(doors_yaml, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        doors = []
+        for item in (data.get('exit_doors') or []):
+            try:
+                doors.append({
+                    'name': str(item['name']),
+                    'x': float(item['x']),
+                    'y': float(item['y']),
+                })
+            except (KeyError, TypeError, ValueError):
+                self.get_logger().warn('잘못된 출구 항목 건너뜀: %s' % item)
+        if not doors:
+            self.get_logger().warn('exit_doors.yaml이 비어 있음 — 내장 기본 좌표 사용')
+            return list(DOOR_POSITIONS)
+        return doors
 
     def load_inspection_points(self):
         if not os.path.exists(self.inspection_yaml):
@@ -275,7 +305,7 @@ class PatrolNavigator(Node):
     def find_nearest_door(self):
         nearest = None
         min_dist = float('inf')
-        for door in DOOR_POSITIONS:
+        for door in self.doors:
             dist = math.hypot(door['x'] - self.current_x, door['y'] - self.current_y)
             if dist < min_dist:
                 min_dist = dist
@@ -292,10 +322,11 @@ class PatrolNavigator(Node):
         pose.pose.orientation.w = math.cos(yaw / 2.0)
         return pose
 
-    def go_to_pose(self, x, y, yaw, abort_check=None):
+    def go_to_pose(self, x, y, yaw, abort_check=None, timeout=None):
         self._nav_client.wait_for_server()
         done = threading.Event()
         status = [None]
+        start_time = time.time()
 
         def goal_response_cb(future):
             gh = future.result()
@@ -321,20 +352,38 @@ class PatrolNavigator(Node):
                 if self._current_goal_handle is not None:
                     self._current_goal_handle.cancel_goal_async()
                 return False
+            # 타임아웃 — Nav2가 막힌 채 무한 재계획하면 여기서 끊고 실패 처리
+            if timeout is not None and time.time() - start_time > timeout:
+                if self._current_goal_handle is not None:
+                    self._current_goal_handle.cancel_goal_async()
+                self.get_logger().warn('⏱ 이동 %d초 초과 — 목표 취소' % int(timeout))
+                return False
             time.sleep(0.2)
 
         return status[0] == GoalStatus.STATUS_SUCCEEDED
 
     def evacuate(self, door):
         time.sleep(2.0)
-        self.get_logger().warn('🚶 대피 → %s' % door['name'])
-        success = self.go_to_pose(door['x'], door['y'], 0.0, abort_check=lambda: False)
-        if success:
-            self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % door['name'])
-            self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % door['name'])
-            time.sleep(30)
-        else:
-            self.get_logger().warn('대피 이동 실패')
+        # 가까운 순서대로 모든 출구 시도 (최근접이 막혀 있으면 다음 출구로)
+        doors = sorted(self.doors,
+                       key=lambda d: math.hypot(d['x'] - self.current_x,
+                                                d['y'] - self.current_y))
+        success = False
+        for d in doors:
+            self.get_logger().warn('🚶 대피 → %s' % d['name'])
+            if self.go_to_pose(d['x'], d['y'], 0.0,
+                               abort_check=lambda: False, timeout=90.0):
+                success = True
+                self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % d['name'])
+                self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % d['name'])
+                time.sleep(30)
+                break
+            self.get_logger().warn('⚠ %s 경로 막힘/실패 — 다음 출구 시도' % d['name'])
+            self.publish_status('[대피실패] %s 도달 불가 — 다음 출구 시도' % d['name'])
+
+        if not success:
+            self.get_logger().error('❌ 모든 출구 도달 실패 — 현 위치 대기 후 순찰 복귀')
+            self.publish_status('[대피불가] 모든 출구 도달 실패 — 수동 확인 필요')
 
         with self._lock:
             self.evacuating = False

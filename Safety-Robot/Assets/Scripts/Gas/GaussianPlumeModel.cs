@@ -125,6 +125,8 @@ public class GaussianPlumeModel : MonoBehaviour
         // Y축 가우시안 (가스 수직 거동) — 수직 퍼짐도 거리 비례
         float sigmaY = verticalSigma + sigmaGrowth * dist * 0.5f;
         float cloudY = src.y + verticalSpeed * Mathf.Min(elapsed, 15f);
+        // 무거운 가스(H2S 등)는 바닥에 깔림 — 지면 아래로 침투하지 않게 클램프
+        cloudY = Mathf.Max(cloudY, 0.3f);
         float distY = (y - cloudY) * (y - cloudY);
         float vertConc = Mathf.Exp(-distY / (2f * sigmaY * sigmaY));
 
