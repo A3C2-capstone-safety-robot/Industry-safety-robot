@@ -67,6 +67,8 @@ class PatrolNavigator(Node):
         self._overheat_reported = {}
         self.gas_tracking = False
         self._gas_danger = False
+        self._gas_start_time = None
+        self.gas_timeout = 45.0  # 누출원 못 찾으면 순찰 재개(초)
 
         self.patrol_active = True
         self.evacuating = False
@@ -164,12 +166,28 @@ class PatrolNavigator(Node):
         if '감지' not in text:
             return
         is_danger = 'DANGER' in text.upper() or '[위험]' in text
+
+        # ── 추적 중: 농도가 위험 수준으로 올라가면 즉시 위험 리포트 (1회, 추적은 계속) ──
+        if self.gas_tracking:
+            if is_danger and not self._gas_danger:
+                self._gas_danger = True
+                gtype = self._search(r'\]\s*(\S+)\s*감지', text, '미상')
+                conc = self._search(r'([\d.]+)\s*ppm', text, '?')
+                zone = get_zone(self.current_x, self.current_y)
+                report = ('[가스위험] 종류:%s | 농도:%sppm | 구역:%s | '
+                          '위험 수준 도달 — 인근 인원 대피 필요 (로봇은 누출원 추적 계속)'
+                          % (gtype, conc, zone))
+                self.publish_status(report)
+                self.get_logger().error('🚨 %s' % report)
+            return
+
         with self._lock:
             if self.evacuating or self.gas_tracking:
                 return
             self.gas_tracking = True
             self.patrol_active = False
-            self._gas_danger = is_danger
+            self._gas_danger = False   # 위험 여부는 추적 중 실시간으로 판정
+            self._gas_start_time = time.time()
 
         gtype = self._search(r'\]\s*(\S+)\s*감지', text, '미상')
         conc = self._search(r'([\d.]+)\s*ppm', text, '?')
@@ -209,6 +227,7 @@ class PatrolNavigator(Node):
         self.get_logger().warn('🔴 %s' % report2)
 
         self.gas_tracking = False
+        self._gas_start_time = None
         if need_evac:
             with self._lock:
                 do_evac = not self.evacuating
@@ -312,6 +331,18 @@ class PatrolNavigator(Node):
     def _interrupted(self):
         return self.evacuating or not self.patrol_active
 
+    def _check_gas_timeout(self):
+        # 가스 추적이 너무 오래 지속(누출원 못 찾음/해결됨)되면 순찰 재개
+        if (self.gas_tracking and not self.evacuating
+                and self._gas_start_time is not None
+                and time.time() - self._gas_start_time > self.gas_timeout):
+            self.get_logger().warn('⏱ 가스 추적 타임아웃 — 누출원 못 찾음/해결됨, 순찰 재개')
+            self.publish_status('[가스] 추적 타임아웃 또는 해결 — 순찰 재개')
+            self.gas_tracking = False
+            self._gas_start_time = None
+            self.patrol_active = True
+            self.publish_mode('PATROL')
+
     def run_patrol(self):
         self.get_logger().info('NavigateToPose 액션 서버 대기 중...')
         self._nav_client.wait_for_server()
@@ -326,6 +357,7 @@ class PatrolNavigator(Node):
 
         while rclpy.ok():
             if self._interrupted():
+                self._check_gas_timeout()
                 time.sleep(1.0)
                 continue
 

@@ -161,15 +161,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GaussianPlumeModel
   gasType: 2
   leakSource: {fileID: 3725962542505016715}
-  emissionRate: 130
+  emissionRate: 600
   windDirection: {x: 1, y: 0}
   windSpeed: 1.5
-  sigmaBase: 3.5
-  sigmaGrowth: 0.12
+  sigmaBase: 2.5
+  sigmaGrowth: 0.07
   verticalSpeed: 0.15
   verticalSigma: 1.8
-  alertThreshold: 25
-  dangerThreshold: 300
+  alertThreshold: 60
+  dangerThreshold: 200
+  buildupTime: 30
   leakStartTime: -1
   isLeaking: 0
 --- !u!1 &5483314200589195611
@@ -289,7 +290,7 @@ ParticleSystem:
     startLifetime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 20
+      scalar: 12
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -396,7 +397,7 @@ ParticleSystem:
       serializedVersion: 2
       minMaxState: 0
       minColor: {r: 1, g: 1, b: 1, a: 1}
-      maxColor: {r: 0.20917071, g: 0.7660377, b: 0.1141829, a: 1}
+      maxColor: {r: 0.20917071, g: 0.7660377, b: 0.1141829, a: 0.13725491}
       maxGradient:
         serializedVersion: 2
         key0: {r: 1, g: 1, b: 1, a: 1}
@@ -460,7 +461,7 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 2
+      scalar: 3
       minScalar: 1
       maxCurve:
         serializedVersion: 2
@@ -777,7 +778,7 @@ ParticleSystem:
         m_RotationOrder: 4
     randomizeRotationDirection: 0
     gravitySource: 0
-    maxNumParticles: 5000
+    maxNumParticles: 2000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
     rotation3D: 0
@@ -1043,7 +1044,7 @@ ParticleSystem:
     rateOverTime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 200
+      scalar: 50
       minScalar: 10
       maxCurve:
         serializedVersion: 2

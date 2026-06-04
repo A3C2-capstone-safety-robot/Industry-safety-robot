@@ -141,13 +141,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8091798863874363935}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.15928663, y: 0.94751984, z: 0.24619137, w: 0.12737261}
-  m_LocalPosition: {x: -0.078, y: 0.106, z: 0.144}
+  m_LocalRotation: {x: -0.27608854, y: 0.5669358, z: 0.6313187, w: 0.4514374}
+  m_LocalPosition: {x: -0.07800005, y: 0.10599995, z: 0.1440001}
   m_LocalScale: {x: 0.10905, y: 0.10905, z: 0.10905}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 4321410953319872139}
-  m_LocalEulerAnglesHint: {x: -30.472, y: -190.898, z: 343.891}
+  m_LocalEulerAnglesHint: {x: -74.82, y: -321.426, z: 438.898}
 --- !u!198 &56756944502192847
 ParticleSystem:
   m_ObjectHideFlags: 0
@@ -162,7 +162,7 @@ ParticleSystem:
   cullingMode: 0
   ringBufferMode: 0
   ringBufferLoopRange: {x: 0, y: 1}
-  emitterVelocityMode: 1
+  emitterVelocityMode: 2
   looping: 1
   prewarm: 0
   playOnAwake: 1
@@ -231,7 +231,7 @@ ParticleSystem:
     startLifetime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 20
+      scalar: 12
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -284,7 +284,7 @@ ParticleSystem:
     startSpeed:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 1.5
+      scalar: 0.2
       minScalar: 5
       maxCurve:
         serializedVersion: 2
@@ -338,7 +338,7 @@ ParticleSystem:
       serializedVersion: 2
       minMaxState: 0
       minColor: {r: 1, g: 1, b: 1, a: 1}
-      maxColor: {r: 1, g: 0.7995582, b: 0.1490565, a: 1}
+      maxColor: {r: 1, g: 0.7995582, b: 0.1490565, a: 0.101960786}
       maxGradient:
         serializedVersion: 2
         key0: {r: 1, g: 1, b: 1, a: 1}
@@ -402,7 +402,7 @@ ParticleSystem:
     startSize:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 2
+      scalar: 3
       minScalar: 1
       maxCurve:
         serializedVersion: 2
@@ -719,7 +719,7 @@ ParticleSystem:
         m_RotationOrder: 4
     randomizeRotationDirection: 0
     gravitySource: 0
-    maxNumParticles: 5000
+    maxNumParticles: 2000
     customEmitterVelocity: {x: 0, y: 0, z: 0}
     size3D: 0
     rotation3D: 0
@@ -985,7 +985,7 @@ ParticleSystem:
     rateOverTime:
       serializedVersion: 2
       minMaxState: 0
-      scalar: 200
+      scalar: 50
       minScalar: 10
       maxCurve:
         serializedVersion: 2
@@ -5012,14 +5012,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GaussianPlumeModel
   gasType: 0
   leakSource: {fileID: 4321410953319872139}
-  emissionRate: 100
+  emissionRate: 600
   windDirection: {x: 0, y: 0}
   windSpeed: 1.5
   sigmaBase: 5
   sigmaGrowth: 0.3
   verticalSpeed: -0.3
   verticalSigma: 1.5
-  alertThreshold: 10
-  dangerThreshold: 50
+  alertThreshold: 30
+  dangerThreshold: 100
+  buildupTime: 40
   leakStartTime: -1
   isLeaking: 0

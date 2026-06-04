@@ -41,7 +41,8 @@ public class MothSearchAlgorithm : MonoBehaviour
     public int maxCastSteps = 8;                 // Cast 최대 반복
     public float spiralRadius = 0.5f;            // Spiral 초기 반경 (m)
     public float spiralGrowth = 0.2f;            // Spiral 반경 증가량
-    public float sourceThreshold = 80f;          // 누출원 도달 판정 농도 (ppm)
+    public float sourceThreshold = 80f;          // 누출원 도달 판정 농도 (ppm) — 절대 임계값(보조)
+    public float localMaxEpsilon = 0.5f;         // 국소최대 판정 여유(주변보다 이만큼 안 높아도 정점 인정)
 
     [Header("감지 임계값")]
     public float detectionThreshold = 3f;        // 가스 감지 최소 농도 (ppm)
@@ -94,6 +95,8 @@ public class MothSearchAlgorithm : MonoBehaviour
         ros = ROSConnection.GetOrCreateInstance();
         ros.RegisterPublisher<PoseStampedMsg>(navGoalTopic);
         ros.RegisterPublisher<TwistMsg>("/cmd_vel");
+        // 누출원 발견 결과 토픽 — 미리 등록해야 발견 순간 발행이 안 날아감
+        ros.RegisterPublisher<StringMsg>("/moth_search/result");
 
         currentGoal = transform.position;
         currentSpiralRadius = spiralRadius;
@@ -286,11 +289,11 @@ public class MothSearchAlgorithm : MonoBehaviour
     private float gradientTimer = 0f;
     void HandleSurge()
     {
-        // 누출원 도달 (Surge에서 최소 3초 그래디언트 추적 후)
-        if (gasSensor.CurrentConcentration >= sourceThreshold)
+        // 누출원 도달: 국소 최대(농도 정점) 또는 절대 임계값
+        if (IsAtLocalMaximum() || gasSensor.CurrentConcentration >= sourceThreshold)
         {
             TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 누출원 도달!");
+            Debug.Log("[나방] 누출원 도달! (농도 정점)");
             return;
         }
 
@@ -374,11 +377,11 @@ public class MothSearchAlgorithm : MonoBehaviour
     // Spiral: 나선 탐색 + 최고 농도 지점 추적
     void HandleSpiral()
     {
-        // 누출원 도달 (Spiral에서 2초 탐색 후)
-        if (stateTimer > 2f && gasSensor.CurrentConcentration >= sourceThreshold)
+        // 누출원 도달: 국소 최대(농도 정점) 또는 절대 임계값
+        if (stateTimer > 2f && (IsAtLocalMaximum() || gasSensor.CurrentConcentration >= sourceThreshold))
         {
             TransitionTo(MothState.SourceFound);
-            Debug.Log("[나방] 누출원 도달!");
+            Debug.Log("[나방] 누출원 도달! (농도 정점)");
             return;
         }
 
@@ -514,6 +517,26 @@ public class MothSearchAlgorithm : MonoBehaviour
             total += allPlumes[i].GetConcentration(pos.x, pos.y, pos.z);
         }
         return total;
+    }
+
+    // 국소 최대 검출: 현재 위치 농도가 주변(sampleDistance)보다 (거의) 높으면 = 농도 정점 = 누출원
+    // 절대 ppm 기준이 아니라 "주변 대비 가장 높은 곳"으로 판정 (티칭 불필요).
+    bool IsAtLocalMaximum()
+    {
+        Vector3 pos = transform.position;
+        float here = SampleConcentrationAt(pos);
+        if (here < detectionThreshold) return false;   // 가스 거의 없으면 정점 아님
+
+        float maxNeighbor = 0f;
+        for (int i = 0; i < sampleDirections; i++)
+        {
+            float angle = (360f / sampleDirections) * i * Mathf.Deg2Rad;
+            Vector3 dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+            float c = SampleConcentrationAt(pos + dir * sampleDistance);
+            if (c > maxNeighbor) maxNeighbor = c;
+        }
+        // 여기가 주변 어디보다도 (epsilon 여유 내) 높음 → 농도 정점
+        return here + localMaxEpsilon >= maxNeighbor;
     }
 
     // ============================================================

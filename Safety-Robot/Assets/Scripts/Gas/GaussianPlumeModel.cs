@@ -33,6 +33,9 @@ public class GaussianPlumeModel : MonoBehaviour
     public float alertThreshold = 30f;     // ppm
     public float dangerThreshold = 100f;   // ppm (IDLH)
 
+    [Header("누출 속도 (자동 설정됨)")]
+    public float buildupTime = 30f;        // 최대 농도까지 걸리는 시간(초) — 클수록 천천히 누출
+
     [Header("시뮬레이션")]
     public float leakStartTime = -1f;
     public bool isLeaking = false;
@@ -50,36 +53,39 @@ public class GaussianPlumeModel : MonoBehaviour
         switch (type)
         {
             case GasType.H2S:
-                // 황화수소: 무거움 → 바닥으로 가라앉음
-                emissionRate = 100f;        // 누출원 바로 옆 최대 농도 (ppm)
+                // 황화수소: 무거움 → 바닥으로 가라앉음. 제일 독성 → 낮은 농도서 위험.
+                emissionRate = 600f;        // 누출원 바로 옆 최대 농도 (ppm)
                 verticalSpeed = -0.3f;      // 하강
                 verticalSigma = 1.5f;       // Y축 확산
-                sigmaBase = 5f;             // 초기 확산 반경 (m) — 5m 밖부터 급감
-                sigmaGrowth = 0.3f;         // 시간에 따라 반경 증가 (m/s)
-                alertThreshold = 10f;       // 10 ppm
-                dangerThreshold = 50f;      // 50 ppm
+                sigmaBase = 2f;             // 초기 확산 반경 (m) — 좁게(국소)
+                sigmaGrowth = 0.05f;        // 천천히 조금만 커짐
+                alertThreshold = 5f;        // 감지(추적 시작) — 조금만 있어도 반응
+                dangerThreshold = 20f;      // 위험·대피 (고경보 수준 — IDLH 전에 대피)
+                buildupTime = 40f;          // 무거워서 천천히 축적
                 break;
 
             case GasType.LNG:
-                // 메탄: 가벼움 → 위로 상승, 빠르게 확산
-                emissionRate = 120f;
+                // 메탄: 가벼움 → 위로 상승, 빠르게 확산. 폭발성(ppm당 독성 낮음) → 높은 기준.
+                emissionRate = 600f;
                 verticalSpeed = 0.5f;       // 상승
                 verticalSigma = 2f;         // Y축 넓게
-                sigmaBase = 6f;             // 넓은 확산 반경
-                sigmaGrowth = 0.4f;         // 빠르게 퍼짐
-                alertThreshold = 5000f;     // LEL 10%
-                dangerThreshold = 25000f;   // LEL 50%
+                sigmaBase = 3f;             // 가벼워 약간 더 넓게(그래도 국소)
+                sigmaGrowth = 0.1f;         // 천천히 조금만 커짐
+                alertThreshold = 20f;       // 감지(추적 시작) — 민감하게
+                dangerThreshold = 100f;     // 위험·대피 (고경보 수준, ~20% LEL 비례)
+                buildupTime = 25f;          // 가벼워 비교적 빨리 퍼짐
                 break;
 
             case GasType.NH3:
-                // 암모니아: 약간 가벼움 → 살짝 상승
-                emissionRate = 110f;
+                // 암모니아: 약간 가벼움 → 살짝 상승. 중간 위험도.
+                emissionRate = 600f;
                 verticalSpeed = 0.15f;      // 약간 상승
                 verticalSigma = 1.8f;       // 중간 Y축 확산
-                sigmaBase = 5.5f;           // 중간 확산 반경
-                sigmaGrowth = 0.35f;        // 중간 속도
-                alertThreshold = 25f;       // 25 ppm
-                dangerThreshold = 150f;     // 150 ppm
+                sigmaBase = 2.5f;           // 중간(국소)
+                sigmaGrowth = 0.07f;        // 천천히 조금만 커짐
+                alertThreshold = 8f;        // 감지(추적 시작) — 민감하게
+                dangerThreshold = 50f;      // 위험·대피 (고경보 수준)
+                buildupTime = 30f;          // 중간 속도로 누출
                 break;
         }
     }
@@ -101,7 +107,7 @@ public class GaussianPlumeModel : MonoBehaviour
         float dist = Mathf.Sqrt(dx * dx + dz * dz);
 
         // 시간에 따른 플룸 성장 (5초에 걸쳐 서서히 확대)
-        float timeFactor = Mathf.Clamp01(elapsed / 5f);
+        float timeFactor = Mathf.Clamp01(elapsed / Mathf.Max(0.1f, buildupTime));
 
         // 확산 반경: 시간에 따라 천천히 커짐
         float sigma = sigmaBase + sigmaGrowth * Mathf.Min(elapsed, 20f);
@@ -135,7 +141,7 @@ public class GaussianPlumeModel : MonoBehaviour
         float dz = z - leakSource.position.z;
         float dist = Mathf.Sqrt(dx * dx + dz * dz);
 
-        float timeFactor = Mathf.Clamp01(elapsed / 5f);
+        float timeFactor = Mathf.Clamp01(elapsed / Mathf.Max(0.1f, buildupTime));
         float sigma = sigmaBase + sigmaGrowth * Mathf.Min(elapsed, 20f);
 
         // 거리에 따른 지수 감쇠
