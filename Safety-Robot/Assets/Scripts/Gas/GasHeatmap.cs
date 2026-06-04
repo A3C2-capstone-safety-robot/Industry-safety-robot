@@ -10,6 +10,11 @@ public class GasHeatmap : MonoBehaviour
     public float areaSize = 40f;                   // 히트맵 한 변 크기 (m)
     public float heightOffset = 0.05f;             // 바닥 위 높이 (겹침 방지)
 
+    [Header("자동 영역 맞춤")]
+    [Tooltip("씬의 모든 GasLeakPoint를 포함하도록 중심/크기 자동 조정 (구석 누출원 누락 방지)")]
+    public bool autoFitToLeakSources = true;
+    public float fitMargin = 12f;                  // 가장 바깥 누출원 둘레 여유 (m)
+
     [Header("해상도")]
     public int resolution = 128;                   // 텍스처 해상도 (128x128)
     public float updateInterval = 0.5f;            // 업데이트 주기 (초)
@@ -36,8 +41,36 @@ public class GasHeatmap : MonoBehaviour
     void Start()
     {
         allPlumes = FindObjectsByType<GaussianPlumeModel>(FindObjectsSortMode.None);
+        if (autoFitToLeakSources) AutoFitArea();
         CreateHeatmapPlane();
         colorBuffer = new Color[resolution * resolution];
+    }
+
+    // 씬의 모든 누출원을 포함하도록 히트맵 중심/크기 자동 조정
+    void AutoFitArea()
+    {
+        bool any = false;
+        float minX = 0f, maxX = 0f, minZ = 0f, maxZ = 0f;
+
+        for (int i = 0; i < allPlumes.Length; i++)
+        {
+            if (allPlumes[i] == null || allPlumes[i].leakSource == null) continue;
+            Vector3 p = allPlumes[i].leakSource.position;
+            if (!any) { minX = maxX = p.x; minZ = maxZ = p.z; any = true; }
+            else
+            {
+                minX = Mathf.Min(minX, p.x); maxX = Mathf.Max(maxX, p.x);
+                minZ = Mathf.Min(minZ, p.z); maxZ = Mathf.Max(maxZ, p.z);
+            }
+        }
+        if (!any) return;
+
+        centerPosition = new Vector3(
+            (minX + maxX) * 0.5f, centerPosition.y, (minZ + maxZ) * 0.5f);
+        areaSize = Mathf.Max(maxX - minX, maxZ - minZ) + fitMargin * 2f;
+
+        Debug.Log($"[히트맵] 자동 맞춤 — 중심:({centerPosition.x:F1},{centerPosition.z:F1}), " +
+                  $"크기:{areaSize:F0}m (누출원 {allPlumes.Length}개 포함)");
     }
 
     void Update()

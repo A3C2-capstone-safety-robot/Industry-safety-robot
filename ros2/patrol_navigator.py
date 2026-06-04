@@ -77,6 +77,7 @@ class PatrolNavigator(Node):
 
         self.patrol_active = True
         self.evacuating = False
+        self._resume_idx = 0           # 중단된 순찰을 이어서 할 지점 인덱스
         self.current_x = 0.0
         self.current_y = 0.0
         self._current_goal_handle = None
@@ -446,19 +447,30 @@ class PatrolNavigator(Node):
                 continue
 
             patrol_count += 1
-            self.get_logger().info('===== 순찰 %d회차 시작 (%d개 지점) =====' % (patrol_count, total))
             start_time = time.time()
             round_success = 0
 
-            for idx, (name, x, y, yaw) in enumerate(self.inspection_points):
+            # 대피/추적으로 중단됐던 지점부터 이어서 (한 바퀴 끝나면 0으로 리셋)
+            start_idx = self._resume_idx
+            self._resume_idx = 0
+            if start_idx > 0:
+                self.get_logger().info('===== 순찰 %d회차 — %d/%d번 지점부터 이어서 ====='
+                                       % (patrol_count, start_idx + 1, total))
+            else:
+                self.get_logger().info('===== 순찰 %d회차 시작 (%d개 지점) =====' % (patrol_count, total))
+
+            for idx in range(start_idx, total):
+                name, x, y, yaw = self.inspection_points[idx]
                 if self._interrupted():
+                    self._resume_idx = idx
                     break
 
                 self.get_logger().info('[%d회차] %d/%d → %s (%.2f, %.2f) 이동 중...'
                                        % (patrol_count, idx + 1, total, name, x, y))
                 success = self.go_to_pose(x, y, yaw, abort_check=self._interrupted)
                 if self._interrupted():
-                    self.get_logger().warn('🚨 순찰 중단 (대피)')
+                    self._resume_idx = idx   # 이 지점부터 재개
+                    self.get_logger().warn('🚨 순찰 중단 (대피) — 재개 시 %d번 지점부터' % (idx + 1))
                     break
 
                 if success:
