@@ -269,6 +269,7 @@ class PatrolNavigator(Node):
             patrol_count += 1
             self.get_logger().info('===== 순찰 %d회차 시작 (%d개 지점) =====' % (patrol_count, total))
             start_time = time.time()
+            round_success = 0
 
             for idx, (name, x, y, yaw) in enumerate(self.inspection_points):
                 if self._interrupted():
@@ -282,6 +283,7 @@ class PatrolNavigator(Node):
                     break
 
                 if success:
+                    round_success += 1
                     self.get_logger().info('  ✅ %s 도착 — 점검 중 (%.0f초)' % (name, self.dwell_time))
                     t0 = time.time()
                     while time.time() - t0 < self.dwell_time:
@@ -289,14 +291,23 @@ class PatrolNavigator(Node):
                             break
                         time.sleep(0.2)
                 else:
-                    self.get_logger().warn('  ⚠ %s 도달 실패 — 다음 지점으로' % name)
+                    # 목표 거부/실패 → 폭주 방지 백오프
+                    self.get_logger().warn('  ⚠ %s 도달 실패 — 2초 후 다음 지점' % name)
+                    time.sleep(2.0)
 
-            if not self._interrupted():
+            if self._interrupted():
+                continue
+
+            if round_success == 0:
+                self.get_logger().error(
+                    '⚠️ 한 지점도 도달 못함 — Nav2/Unity 가 아직 준비 안 됨? '
+                    '(Unity Play 했는지, /odom·/scan 흐르는지 확인) 8초 대기.')
+                time.sleep(8.0)
+            else:
                 elapsed = time.time() - start_time
                 self.get_logger().info('✅ 순찰 %d회차 완료 (소요: %d분 %d초)'
                                        % (patrol_count, int(elapsed // 60), int(elapsed % 60)))
                 time.sleep(2.0)
-
 
 def main(args=None):
     rclpy.init(args=args)

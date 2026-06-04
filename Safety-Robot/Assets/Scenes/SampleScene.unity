@@ -1218,8 +1218,8 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 0.3
-  m_Radius: 0.5
+  m_Height: 0.8
+  m_Radius: 0.35
   m_SlopeLimit: 45
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
@@ -1240,6 +1240,7 @@ MonoBehaviour:
   odomFrame: odom
   baseFrame: base_link
   publishHz: 20
+  startupDelay: 1.5
 --- !u!114 &221095399
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1247,7 +1248,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 221095394}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f7670208274ce8448a3a334d4dbfac1f, type: 3}
   m_Name: 
@@ -1348,7 +1349,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CmdVelSubscriber
   topicName: /cmd_vel
-  linearSpeedScale: 1
+  linearSpeedScale: 1.8
   angularSpeedScale: 1
   suppressMovement: 0
 --- !u!114 &221095403
@@ -1823,8 +1824,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OverheatScenarioManager
   machines:
   - {fileID: 1001306154}
-  autoTrigger: 1
-  triggerInterval: 30
+  showUI: 1
+  toggleUIKey: 104
   tempTopicName: /machine_temperatures
   alertTopicName: /thermal_alerts
   publishRate: 2
@@ -5762,6 +5763,7 @@ MonoBehaviour:
     m_Bits: 128
   rayOriginOffset: 0.02
   baseFrameTransform: {fileID: 221095395}
+  startupDelay: 1.5
 --- !u!1001 &1340504967
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8804,7 +8806,7 @@ MonoBehaviour:
   randomLeakMaxInterval: 120
   randomLeakDuration: 60
   showUI: 1
-  toggleUIKey: 9
+  toggleUIKey: 103
 --- !u!4 &2129741520
 Transform:
   m_ObjectHideFlags: 0

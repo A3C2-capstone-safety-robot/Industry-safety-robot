@@ -3,6 +3,8 @@ using UnityEngine;
 using Unity.Robotics.ROSTCPConnector;
 using RosMessageTypes.Geometry;
 
+// Nav2(또는 MothSearch)가 보낸 /cmd_vel 을 받아 로봇을 움직인다.
+// CharacterController.Move 로 이동 → 벽/장애물 콜라이더에 막힘 (안 뚫림).
 public class CmdVelSubscriber : MonoBehaviour
 {
     public string topicName = "/cmd_vel";
@@ -12,16 +14,23 @@ public class CmdVelSubscriber : MonoBehaviour
     public float angularSpeedScale = 1f;   // 각속도 스케일
 
     [Header("충돌 방지")]
-    [Tooltip("true이면 이 스크립트가 transform 이동을 하지 않음 (MothSearchAlgorithm 직접 이동 모드용)")]
+    [Tooltip("true이면 이 스크립트가 이동을 하지 않음")]
     public bool suppressMovement = false;
 
-    private Rigidbody rb;
-    private Vector3 targetLinearVel;
-    private float targetAngularVel;
+    private CharacterController controller;
+    private float linearX = 0f;    // m/s (전진/후진)
+    private float angularZ = 0f;   // rad/s (회전)
+    private float yVelocity = 0f;
+    private const float Gravity = -9.81f;
 
     void Start()
     {
-        rb = GetComponent<Rigidbody>();
+        controller = GetComponent<CharacterController>();
+        if (controller == null)
+            controller = GetComponentInParent<CharacterController>();
+        if (controller == null)
+            Debug.LogWarning("[CmdVelSubscriber] CharacterController 없음 — 충돌 처리 안 됨(폴백). " +
+                             "로봇에 CharacterController 를 두는 걸 권장.", this);
 
         ROSConnection.GetOrCreateInstance()
             .Subscribe<TwistMsg>(topicName, OnCmdVelReceived);
@@ -29,46 +38,43 @@ public class CmdVelSubscriber : MonoBehaviour
 
     void OnCmdVelReceived(TwistMsg msg)
     {
-        // ROS cmd_vel → Unity 이동 명령 변환
-        // ROS: linear.x = 전진, angular.z = 회전
-        targetLinearVel = transform.forward * (float)msg.linear.x * linearSpeedScale;
-        targetAngularVel = -(float)msg.angular.z * angularSpeedScale; // 방향 반전
+        // ROS: linear.x = 전진(m/s), angular.z = 회전(rad/s, +가 좌회전)
+        linearX = (float)msg.linear.x;
+        angularZ = (float)msg.angular.z;
     }
 
-    void FixedUpdate()
+    void Update()
     {
         if (suppressMovement)
-        {
-            StopRigidbody();
             return;
-        }
 
-        if (rb != null)
+        // 회전 (ROS +angular.z = 좌회전(CCW) → Unity는 시계방향이 +라 부호 반전)
+        float turnDeg = -angularZ * angularSpeedScale * Mathf.Rad2Deg * Time.deltaTime;
+        transform.Rotate(0f, turnDeg, 0f);
+
+        if (controller != null)
         {
-            rb.linearVelocity = new Vector3(targetLinearVel.x, rb.linearVelocity.y, targetLinearVel.z);
-            rb.angularVelocity = new Vector3(0f, targetAngularVel, 0f);
+            // 중력으로 바닥에 붙어있게 유지
+            if (controller.isGrounded && yVelocity < 0f)
+                yVelocity = -2f;
+            else
+                yVelocity += Gravity * Time.deltaTime;
+
+            // 전진/후진(수평) + 중력(수직) → CharacterController.Move 로 충돌 처리
+            Vector3 horizontal = transform.forward * linearX * linearSpeedScale;
+            Vector3 motion = new Vector3(horizontal.x, yVelocity, horizontal.z);
+            controller.Move(motion * Time.deltaTime);
         }
         else
         {
-            // Rigidbody가 없으면 Transform 직접 이동
-            transform.position += targetLinearVel * Time.fixedDeltaTime;
-            transform.Rotate(0f, targetAngularVel * Mathf.Rad2Deg * Time.fixedDeltaTime, 0f);
+            // CharacterController 가 없을 때만 폴백 (충돌 처리 안 됨)
+            transform.position += transform.forward * linearX * linearSpeedScale * Time.deltaTime;
         }
     }
 
     public void ResetCommand()
     {
-        targetLinearVel = Vector3.zero;
-        targetAngularVel = 0f;
-        StopRigidbody();
-    }
-
-    void StopRigidbody()
-    {
-        if (rb == null)
-            return;
-
-        rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-        rb.angularVelocity = Vector3.zero;
+        linearX = 0f;
+        angularZ = 0f;
     }
 }
