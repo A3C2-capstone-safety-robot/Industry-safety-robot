@@ -76,6 +76,7 @@ local_costmap:
       transform_tolerance: 1.0
       global_frame: odom
       robot_base_frame: base_link
+      robot_radius: 0.35
       rolling_window: true
       width: 10
       height: 10
@@ -105,6 +106,7 @@ global_costmap:
       transform_tolerance: 1.0
       global_frame: map
       robot_base_frame: base_link
+      robot_radius: 0.35
       plugins: ["static_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
