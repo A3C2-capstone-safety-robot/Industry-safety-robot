@@ -82,7 +82,20 @@ function App() {
     Danger: "#dc2626",
   }[risk.final_risk] || "#6b7280";
 
-  const summary = `${gas.gas_type} ${gas.concentration_ppm}ppm 감지 및 ${hottestMachine?.id} 과열 감지. ${sensor.location} 접근 통제 및 즉시 대응이 필요합니다.`;
+  // 위험도 기반 상황 요약 — 실제 이상이 있는 항목만 문장에 포함
+  const alerts = [];
+  if (risk.gas_risk && risk.gas_risk !== "Normal") {
+    alerts.push(`${gas.gas_type} ${gas.concentration_ppm}ppm 감지`);
+  }
+  if (risk.temperature_risk && risk.temperature_risk !== "Normal") {
+    const machineId = risk.hottest_machine_id || hottestMachine?.id || "설비";
+    const temp = risk.max_temperature ?? hottestMachine?.temperature;
+    alerts.push(`${machineId} 과열 (${Number(temp).toFixed(1)}°C)`);
+  }
+  const summary = alerts.length
+    ? `${alerts.join(" 및 ")}. ${sensor.location} 접근 통제 및 즉시 대응이 필요합니다.`
+    : `이상 징후 없음 — 정상 감시 중입니다. (현재 위치: ${sensor.location})`;
+  const summaryIcon = alerts.length ? "⚠️" : "✅";
   
    return (
     <div style={styles.page}>
@@ -98,7 +111,7 @@ function App() {
       </div>
 
       <div style={styles.summaryBox}>
-        <h2 style={styles.summaryTitle}>⚠️ AI 상황 요약</h2>
+        <h2 style={styles.summaryTitle}>{summaryIcon} AI 상황 요약</h2>
         <p style={styles.summaryText}>{summary}</p>
       </div>
 
@@ -116,13 +129,22 @@ function App() {
         <div style={styles.card}>
           <p style={styles.cardLabel}>검출 가스</p>
           <h2 style={styles.cardValue}>{gas.gas_type}</h2>
-          <p style={styles.cardSub}>{gas.concentration_ppm} ppm</p>
+          <p style={styles.cardSub}>
+            {Number(gas.concentration_ppm).toFixed(1)} ppm
+          </p>
         </div>
 
         <div style={styles.card}>
-          <p style={styles.cardLabel}>설비 온도</p>
-          <h2 style={styles.cardValue}>{hottestMachine?.temperature}°C</h2>
-          <p style={styles.cardSub}>{hottestMachine?.id}</p>
+          <p style={styles.cardLabel}>설비 온도 (최고)</p>
+          <h2 style={styles.cardValue}>
+            {Number(
+              risk.max_temperature ?? hottestMachine?.temperature ?? 0
+            ).toFixed(1)}
+            °C
+          </h2>
+          <p style={styles.cardSub}>
+            {risk.hottest_machine_id || hottestMachine?.id || "-"}
+          </p>
         </div>
 
         <div style={styles.card}>

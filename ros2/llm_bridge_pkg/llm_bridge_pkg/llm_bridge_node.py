@@ -49,7 +49,18 @@ class LlmBridgeNode(Node):
         self.declare_parameter("robot_mode_topic", "/robot_mode")
         self.declare_parameter("moth_result_topic", "/moth_search/result")
         self.declare_parameter("max_status_events", 30)
-        self.declare_parameter("zone_rectangles", "[]")
+        # 기본 구역 정의 — patrol_navigator.py의 ZONE_DEFINITIONS와 동일 경계
+        #   A구역: x<0, y<-5 / B구역: x<0, y>=-5 / C구역: 0<=x<21, y<0
+        #   D구역: 0<=x<21, y>=0 / E구역: x>=21
+        # (반평면을 ±100m 한계의 사각형으로 표현. 맵 바뀌면 파라미터로 덮어쓰기)
+        default_zones = json.dumps([
+            {"name": "A구역", "x_min": -100, "x_max": 0,   "y_min": -100, "y_max": -5},
+            {"name": "B구역", "x_min": -100, "x_max": 0,   "y_min": -5,   "y_max": 100},
+            {"name": "C구역", "x_min": 0,    "x_max": 21,  "y_min": -100, "y_max": 0},
+            {"name": "D구역", "x_min": 0,    "x_max": 21,  "y_min": 0,    "y_max": 100},
+            {"name": "E구역", "x_min": 21,   "x_max": 100, "y_min": -100, "y_max": 100},
+        ], ensure_ascii=False)
+        self.declare_parameter("zone_rectangles", default_zones)
         # Use sensor-data QoS (BEST_EFFORT) for subscriptions. Many simulators /
         # ROS bridges publish sensor topics as BEST_EFFORT, which would otherwise
         # silently mismatch the default RELIABLE profile and deliver no messages.
