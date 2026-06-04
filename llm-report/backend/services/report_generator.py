@@ -50,6 +50,32 @@ def build_context(retrieved_docs: list[dict]) -> str:
     )
 
 
+def format_status_events(sensor_data: dict) -> str:
+    """로봇이 발행한 시간순 상황 보고 → 리포트의 '사고 경위' 재료"""
+    events = sensor_data.get("status_events") or []
+    if not events:
+        return "이벤트 기록 없음"
+
+    lines = []
+    for event in events[-15:]:  # 최근 15개만 (프롬프트 길이 관리)
+        lines.append(f"- {event.get('time', '?')} {event.get('text', '')}")
+    return "\n".join(lines)
+
+
+def format_source_found(sensor_data: dict) -> str:
+    """누출원 특정 결과 요약"""
+    src = sensor_data.get("source_found")
+    if not src:
+        return "누출원 미특정 (탐색 전이거나 진행 중)"
+
+    danger = "위험 — 대피 필요" if src.get("danger") else "주의 수준"
+    return (
+        f"가스 {src.get('gas_type', '?')} | "
+        f"최고 농도 {src.get('peak_concentration', '?')} ppm | "
+        f"위치 좌표 {src.get('position_unity_xyz', '?')} | 판정: {danger}"
+    )
+
+
 def format_machine_status(sensor_data: dict) -> str:
     machines = sensor_data.get("thermal", {}).get("machines", [])
 
@@ -87,6 +113,13 @@ def generate_report(sensor_data: dict, risk_result: dict) -> str:
 가스 경보 메시지: {gas_data.get("alert_message", "없음")}
 과열 경보 메시지: {thermal_data.get("alert_message", "없음")}
 
+[로봇 대응 기록]
+현재 로봇 모드: {sensor_data.get("robot_mode") or "알 수 없음"} (PATROL=순찰, GAS_TRACKING=누출원 추적, EVACUATING=대피)
+누출원 특정 결과: {format_source_found(sensor_data)}
+
+사건 타임라인 (시간순 로봇 보고):
+{format_status_events(sensor_data)}
+
 [위험도 계산 결과]
 최종 위험도: {risk_result.get("final_risk", "Normal")}
 가스 위험도: {risk_result.get("gas_risk", "Normal")}
@@ -100,11 +133,13 @@ def generate_report(sensor_data: dict, risk_result: dict) -> str:
 
 [작성 형식]
 1. 상황 요약
-2. 위험 수준
-3. 추정 원인
-4. 즉시 조치
-5. 대피 지침
-6. 참고 근거
+2. 사고 경위 (사건 타임라인 기반, 시간 명시)
+3. 위험 수준
+4. 추정 원인
+5. 누출원 위치 및 로봇 대응 현황
+6. 즉시 조치
+7. 대피 지침
+8. 참고 근거
 
 [주의사항]
 - 참고 문서에 없는 내용을 단정하지 말 것

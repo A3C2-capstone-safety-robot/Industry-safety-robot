@@ -42,4 +42,8 @@ def convert_ros_data(raw_data: dict) -> dict:
             "alert_message": thermal_alert,
         },
         "location": raw_data.get("location", "Unknown"),
+        # ── 사건 데이터 (llm_bridge가 발행) — 리포트의 경위/대응 섹션 재료 ──
+        "robot_mode": raw_data.get("robot_mode"),          # PATROL / GAS_TRACKING / EVACUATING
+        "source_found": raw_data.get("source_found"),      # 누출원 특정 결과 (좌표·농도·위험)
+        "status_events": raw_data.get("status_events", []),# 시간순 상황 보고 타임라인
     }

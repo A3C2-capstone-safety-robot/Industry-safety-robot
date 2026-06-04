@@ -1,32 +1,68 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function App() {
   const [sensor, setSensor] = useState(null);
   const [risk, setRisk] = useState(null);
   const [report, setReport] = useState("");
+  const [reportMeta, setReportMeta] = useState(null);
+  const [toast, setToast] = useState(null);
   const [error, setError] = useState("");
+  const lastReportId = useRef(0);
 
+  // 3초마다 센서 데이터 + 최신 자동 리포트 폴링.
+  // 백엔드가 위험 감지/누출원 특정 시 자동 생성한 리포트의 id가 바뀌면
+  // 푸시 알림(토스트)을 띄우고 리포트 영역을 자동 갱신한다.
   useEffect(() => {
-    async function fetchDashboardData() {
+    let alive = true;
+
+    async function poll() {
       try {
         const sensorRes = await fetch("http://127.0.0.1:8000/sensor");
         const sensorJson = await sensorRes.json();
-
+        if (!alive) return;
         setSensor(sensorJson.sensor_data);
         setRisk(sensorJson.risk);
+        setError("");
 
-        const reportRes = await fetch("http://127.0.0.1:8000/report");
-        const reportJson = await reportRes.json();
-
-        setReport(reportJson.report);
+        const repRes = await fetch("http://127.0.0.1:8000/report/latest");
+        const repJson = await repRes.json();
+        if (!alive) return;
+        if (repJson.id && repJson.id !== lastReportId.current) {
+          lastReportId.current = repJson.id;
+          setReport(repJson.report || "");
+          setReportMeta(repJson);
+          setToast(`🚨 사고 리포트 자동 생성됨 (${repJson.created_at})`);
+          setTimeout(() => setToast(null), 8000);
+        }
       } catch (err) {
         console.error(err);
-        setError("데이터를 불러오지 못했습니다.");
+        if (alive && !sensor) setError("데이터를 불러오지 못했습니다.");
       }
     }
 
-    fetchDashboardData();
+    poll();
+    const timer = setInterval(poll, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, []);
+
+  // 수동 생성 버튼 (자동을 기다리지 않고 즉시 생성)
+  async function generateNow() {
+    setReport("리포트 생성 중...");
+    try {
+      const res = await fetch("http://127.0.0.1:8000/report");
+      const json = await res.json();
+      setReport(json.report);
+      setReportMeta({
+        created_at: new Date().toLocaleTimeString("ko-KR", { hour12: false }),
+        trigger: "manual",
+      });
+    } catch {
+      setReport("리포트 생성 실패 — 백엔드 연결을 확인하세요.");
+    }
+  }
 
   if (error) {
     return <div style={styles.center}>{error}</div>;
@@ -50,6 +86,7 @@ function App() {
   
    return (
     <div style={styles.page}>
+      {toast && <div style={styles.toast}>{toast}</div>}
       <div style={styles.header}>
         <div>
           <p style={styles.label}>AI Industrial Safety Monitoring</p>
@@ -109,10 +146,22 @@ function App() {
       <div style={styles.reportCard}>
         <div style={styles.reportHeader}>
           <h2>LLM 사고 대응 리포트</h2>
-          <span style={styles.reportTag}>RAG 기반</span>
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            {reportMeta?.created_at && (
+              <span style={styles.cardSub}>
+                {reportMeta.created_at} 생성
+                {reportMeta.trigger === "manual" ? " (수동)" : " (자동)"}
+              </span>
+            )}
+            <button style={styles.reportButton} onClick={generateNow}>
+              지금 생성
+            </button>
+            <span style={styles.reportTag}>RAG 기반</span>
+          </div>
         </div>
         <div style={styles.reportText}>
-          {report || "리포트 생성 중..."}
+          {report ||
+            "아직 생성된 리포트가 없습니다 — 위험 감지 또는 누출원 특정 시 자동 생성됩니다."}
         </div>
       </div>
     </div>
@@ -238,6 +287,29 @@ const styles = {
     lineHeight: 1.75,
     fontSize: "15.5px",
     color: "#1f2937",
+  },
+  reportButton: {
+    background: "#0369a1",
+    color: "white",
+    border: "none",
+    borderRadius: "999px",
+    padding: "8px 16px",
+    fontSize: "13px",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  toast: {
+    position: "fixed",
+    top: "24px",
+    right: "24px",
+    zIndex: 1000,
+    background: "#dc2626",
+    color: "white",
+    padding: "16px 22px",
+    borderRadius: "14px",
+    fontSize: "16px",
+    fontWeight: 700,
+    boxShadow: "0 12px 30px rgba(220, 38, 38, 0.45)",
   },
 };
 

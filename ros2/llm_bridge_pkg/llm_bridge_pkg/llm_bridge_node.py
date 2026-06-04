@@ -3,8 +3,10 @@
 import json
 import re
 import threading
+import time as _time
 import urllib.error
 import urllib.request
+from collections import deque
 
 import rclpy
 from nav_msgs.msg import Odometry
@@ -42,6 +44,11 @@ class LlmBridgeNode(Node):
         self.declare_parameter("machine_temperatures_topic", "/machine_temperatures")
         self.declare_parameter("thermal_alert_topic", "/thermal_alerts")
         self.declare_parameter("odom_topic", "/odom")
+        # ── 사건(이벤트) 토픽 — 리포트의 핵심 재료 ──
+        self.declare_parameter("robot_status_topic", "/robot_status")
+        self.declare_parameter("robot_mode_topic", "/robot_mode")
+        self.declare_parameter("moth_result_topic", "/moth_search/result")
+        self.declare_parameter("max_status_events", 30)
         self.declare_parameter("zone_rectangles", "[]")
         # Use sensor-data QoS (BEST_EFFORT) for subscriptions. Many simulators /
         # ROS bridges publish sensor topics as BEST_EFFORT, which would otherwise
@@ -62,6 +69,12 @@ class LlmBridgeNode(Node):
         self.latest_machine_temperatures = []
         self.latest_thermal_alert = None
         self.latest_odom_xy = None
+        self.latest_robot_mode = None
+        self.latest_moth_result = None
+        # 최근 상태 보고 타임라인 — 리포트 생성용 ([{"time":..., "text":...}, ...])
+        self.status_events = deque(
+            maxlen=int(self.get_parameter("max_status_events").value)
+        )
         self._last_payload_json = None
 
         # Guards shared sensor state (callbacks vs. the POST worker thread).
@@ -111,6 +124,24 @@ class LlmBridgeNode(Node):
             self._on_odom,
             qos,
         )
+        self.create_subscription(
+            String,
+            self.get_parameter("robot_status_topic").value,
+            self._on_robot_status,
+            qos,
+        )
+        self.create_subscription(
+            String,
+            self.get_parameter("robot_mode_topic").value,
+            self._on_robot_mode,
+            qos,
+        )
+        self.create_subscription(
+            String,
+            self.get_parameter("moth_result_topic").value,
+            self._on_moth_result,
+            qos,
+        )
 
         interval = float(self.get_parameter("post_interval_sec").value)
         self.create_timer(interval, self._post_latest_sensor_data)
@@ -146,6 +177,43 @@ class LlmBridgeNode(Node):
                 float(msg.pose.pose.position.x),
                 float(msg.pose.pose.position.y),
             )
+
+    def _on_robot_status(self, msg: String):
+        text = msg.data.strip()
+        if not text:
+            return
+        with self._state_lock:
+            # 같은 메시지 연속 중복 방지 (patrol이 재발행하는 경우)
+            if self.status_events and self.status_events[-1]["text"] == text:
+                return
+            self.status_events.append(
+                {
+                    "time": _time.strftime("%H:%M:%S"),
+                    "text": text,
+                }
+            )
+
+    def _on_robot_mode(self, msg: String):
+        with self._state_lock:
+            self.latest_robot_mode = msg.data.strip() or None
+
+    def _on_moth_result(self, msg: String):
+        # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z|DANGER"
+        text = msg.data.strip()
+        if "SOURCE_FOUND" not in text:
+            return
+        parts = text.split("|")
+        try:
+            peak = float(parts[2]) if len(parts) > 2 else None
+        except ValueError:
+            peak = None
+        with self._state_lock:
+            self.latest_moth_result = {
+                "gas_type": self._normalize_gas_type(parts[1]) if len(parts) > 1 else None,
+                "peak_concentration": peak,
+                "position_unity_xyz": parts[3] if len(parts) > 3 else None,
+                "danger": (parts[4] == "DANGER") if len(parts) > 4 else None,
+            }
 
     def _post_latest_sensor_data(self):
         # Build the payload under the lock, then hand the network I/O to a worker
@@ -218,6 +286,9 @@ class LlmBridgeNode(Node):
                 self.latest_machine_temperatures,
                 self.latest_thermal_alert,
                 self.latest_odom_xy is not None,
+                self.latest_robot_mode,
+                self.latest_moth_result,
+                len(self.status_events) > 0,
             )
         )
 
@@ -239,6 +310,10 @@ class LlmBridgeNode(Node):
             "machine_temperatures": self.latest_machine_temperatures,
             "thermal_alert": self.latest_thermal_alert,
             "location": self._resolve_location(),
+            # ── 리포트 생성용 사건 데이터 ──
+            "robot_mode": self.latest_robot_mode,          # PATROL / GAS_TRACKING / EVACUATING
+            "source_found": self.latest_moth_result,       # 누출원 특정 결과 (좌표·농도·위험여부)
+            "status_events": list(self.status_events),     # 시간순 상황 보고 타임라인
         }
 
     def _resolve_location(self) -> str:
