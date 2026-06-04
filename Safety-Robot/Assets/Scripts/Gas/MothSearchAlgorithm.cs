@@ -619,7 +619,14 @@ public class MothSearchAlgorithm : MonoBehaviour
     {
         Vector3 pos = transform.position;
         float here = SampleConcentrationAt(pos);
-        if (here < detectionThreshold) return false;   // 가스 거의 없으면 정점 아님
+
+        // ★ 가스별 농도 게이트 — 누출원 근처(가파른 구역)에서만 정점 판정 허용.
+        //   방출량 큰 가스(LNG)는 먼 곳 평평한 꼬리에서 eps가 기울기를 압도해
+        //   감지 즉시 오판정 나는 것 방지.
+        float minPeakConc = plumeModel != null
+            ? plumeModel.dangerThreshold * 0.5f
+            : detectionThreshold * 3f;
+        if (here < Mathf.Max(detectionThreshold, minPeakConc)) return false;
 
         float maxNeighbor = 0f;
         for (int i = 0; i < sampleDirections; i++)

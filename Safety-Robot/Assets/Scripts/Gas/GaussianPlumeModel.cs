@@ -70,7 +70,7 @@ public class GaussianPlumeModel : MonoBehaviour
                 verticalSpeed = 0.5f;       // 상승
                 verticalSigma = 2f;         // Y축 넓게
                 sigmaBase = 3f;             // 가벼워 약간 더 넓게(그래도 국소)
-                sigmaGrowth = 0.4f;         // 가벼운 가스 — 더 빨리 퍼짐
+                sigmaGrowth = 0.25f;        // 가벼운 가스 — 퍼지되 꼬리가 맵 전체를 덮지 않게
                 alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시
                 dangerThreshold = 100f;     // 위험·대피 (고경보 수준, ~20% LEL 비례)
                 buildupTime = 25f;          // 가벼워 비교적 빨리 퍼짐
