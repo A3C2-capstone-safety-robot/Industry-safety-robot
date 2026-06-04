@@ -54,36 +54,36 @@ public class GaussianPlumeModel : MonoBehaviour
         {
             case GasType.H2S:
                 // 황화수소: 무거움 → 바닥으로 가라앉음. 제일 독성 → 낮은 농도서 위험.
-                emissionRate = 600f;        // 누출원 바로 옆 최대 농도 (ppm)
+                emissionRate = 60f;         // 피크 농도 — IDLH 언저리(현실적)
                 verticalSpeed = -0.3f;      // 하강
                 verticalSigma = 1.5f;       // Y축 확산
                 sigmaBase = 2f;             // 초기 확산 반경 (m) — 좁게(국소)
                 sigmaGrowth = 0.05f;        // 천천히 조금만 커짐
-                alertThreshold = 5f;        // 감지(추적 시작) — 조금만 있어도 반응
+                alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시 (노이즈 2 위)
                 dangerThreshold = 20f;      // 위험·대피 (고경보 수준 — IDLH 전에 대피)
                 buildupTime = 40f;          // 무거워서 천천히 축적
                 break;
 
             case GasType.LNG:
                 // 메탄: 가벼움 → 위로 상승, 빠르게 확산. 폭발성(ppm당 독성 낮음) → 높은 기준.
-                emissionRate = 600f;
+                emissionRate = 300f;        // 피크 농도
                 verticalSpeed = 0.5f;       // 상승
                 verticalSigma = 2f;         // Y축 넓게
                 sigmaBase = 3f;             // 가벼워 약간 더 넓게(그래도 국소)
                 sigmaGrowth = 0.1f;         // 천천히 조금만 커짐
-                alertThreshold = 20f;       // 감지(추적 시작) — 민감하게
+                alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시
                 dangerThreshold = 100f;     // 위험·대피 (고경보 수준, ~20% LEL 비례)
                 buildupTime = 25f;          // 가벼워 비교적 빨리 퍼짐
                 break;
 
             case GasType.NH3:
                 // 암모니아: 약간 가벼움 → 살짝 상승. 중간 위험도.
-                emissionRate = 600f;
+                emissionRate = 150f;        // 피크 농도 (IDLH 300 미만)
                 verticalSpeed = 0.15f;      // 약간 상승
                 verticalSigma = 1.8f;       // 중간 Y축 확산
                 sigmaBase = 2.5f;           // 중간(국소)
                 sigmaGrowth = 0.07f;        // 천천히 조금만 커짐
-                alertThreshold = 8f;        // 감지(추적 시작) — 민감하게
+                alertThreshold = 3f;        // 감지(추적 시작) — 사실상 검출 즉시
                 dangerThreshold = 50f;      // 위험·대피 (고경보 수준)
                 buildupTime = 30f;          // 중간 속도로 누출
                 break;

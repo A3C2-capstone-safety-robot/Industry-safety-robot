@@ -289,8 +289,8 @@ public class MothSearchAlgorithm : MonoBehaviour
     private float gradientTimer = 0f;
     void HandleSurge()
     {
-        // 누출원 도달: 국소 최대(농도 정점) 또는 절대 임계값
-        if (IsAtLocalMaximum() || gasSensor.CurrentConcentration >= sourceThreshold)
+        // 누출원 도달: 국소 최대(농도 정점)만 사용 — 절대 ppm 기준 없음
+        if (IsAtLocalMaximum())
         {
             TransitionTo(MothState.SourceFound);
             Debug.Log("[나방] 누출원 도달! (농도 정점)");
@@ -377,8 +377,8 @@ public class MothSearchAlgorithm : MonoBehaviour
     // Spiral: 나선 탐색 + 최고 농도 지점 추적
     void HandleSpiral()
     {
-        // 누출원 도달: 국소 최대(농도 정점) 또는 절대 임계값
-        if (stateTimer > 2f && (IsAtLocalMaximum() || gasSensor.CurrentConcentration >= sourceThreshold))
+        // 누출원 도달: 국소 최대(농도 정점)만 사용
+        if (stateTimer > 2f && IsAtLocalMaximum())
         {
             TransitionTo(MothState.SourceFound);
             Debug.Log("[나방] 누출원 도달! (농도 정점)");
@@ -431,13 +431,8 @@ public class MothSearchAlgorithm : MonoBehaviour
         // 매 프레임 속도 0 발행 (로봇 완전 정지)
         PublishStopCommand();
 
-        // 농도가 sourceThreshold 아래로 떨어지면 → Surge로 복귀 (아직 누출원 아님)
-        if (stateTimer > 2f && gasSensor.CurrentConcentration < sourceThreshold)
-        {
-            TransitionTo(MothState.Surge);
-            Debug.Log($"[나방] 농도 부족({gasSensor.CurrentConcentration:F1} < {sourceThreshold}) → Surge 복귀");
-            return;
-        }
+        // (절대 임계 기반 Surge 복귀 제거 — 국소최대 기준 사용.
+        //  가스가 완전히 사라지면 아래 Idle 복귀가 처리)
 
         // 가스 완전 소실 → Idle
         if (stateTimer > 3f && !gasSensor.IsGasDetected(detectionThreshold))
@@ -514,7 +509,7 @@ public class MothSearchAlgorithm : MonoBehaviour
         for (int i = 0; i < allPlumes.Length; i++)
         {
             if (allPlumes[i] == null || !allPlumes[i].isLeaking) continue;
-            total += allPlumes[i].GetConcentration(pos.x, pos.y, pos.z);
+            total += allPlumes[i].GetConcentration(pos.x, pos.z);  // 2D — 센서와 동일 기준
         }
         return total;
     }

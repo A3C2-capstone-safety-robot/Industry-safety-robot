@@ -60,9 +60,9 @@ public class VirtualGasSensor : MonoBehaviour
             var plume = allPlumeModels[i];
             if (plume == null || !plume.isLeaking) continue;
 
+            // 2D(높이 무시) 농도 — 구름이 떠오르거나 가라앉아도 감지되게 (히트맵과 일치)
             float conc = plume.GetConcentration(
                 transform.position.x,
-                transform.position.y,
                 transform.position.z
             );
 

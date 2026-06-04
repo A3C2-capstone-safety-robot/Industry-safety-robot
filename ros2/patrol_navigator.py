@@ -68,7 +68,9 @@ class PatrolNavigator(Node):
         self.gas_tracking = False
         self._gas_danger = False
         self._gas_start_time = None
-        self.gas_timeout = 45.0  # 누출원 못 찾으면 순찰 재개(초)
+        self._last_gas_seen = None
+        self.gas_lost_timeout = 15.0   # 이 시간 동안 가스 미검출 → 상황 종료로 판단(초)
+        self.gas_timeout = 180.0       # 하드캡: 이 시간 넘게 못 찾으면 실패 보고 후 복귀(초)
 
         self.patrol_active = True
         self.evacuating = False
@@ -169,6 +171,7 @@ class PatrolNavigator(Node):
 
         # ── 추적 중: 농도가 위험 수준으로 올라가면 즉시 위험 리포트 (1회, 추적은 계속) ──
         if self.gas_tracking:
+            self._last_gas_seen = time.time()  # 가스가 아직 잡히고 있음
             if is_danger and not self._gas_danger:
                 self._gas_danger = True
                 gtype = self._search(r'\]\s*(\S+)\s*감지', text, '미상')
@@ -188,6 +191,7 @@ class PatrolNavigator(Node):
             self.patrol_active = False
             self._gas_danger = False   # 위험 여부는 추적 중 실시간으로 판정
             self._gas_start_time = time.time()
+            self._last_gas_seen = time.time()
 
         gtype = self._search(r'\]\s*(\S+)\s*감지', text, '미상')
         conc = self._search(r'([\d.]+)\s*ppm', text, '?')
@@ -332,16 +336,35 @@ class PatrolNavigator(Node):
         return self.evacuating or not self.patrol_active
 
     def _check_gas_timeout(self):
-        # 가스 추적이 너무 오래 지속(누출원 못 찾음/해결됨)되면 순찰 재개
-        if (self.gas_tracking and not self.evacuating
-                and self._gas_start_time is not None
-                and time.time() - self._gas_start_time > self.gas_timeout):
-            self.get_logger().warn('⏱ 가스 추적 타임아웃 — 누출원 못 찾음/해결됨, 순찰 재개')
-            self.publish_status('[가스] 추적 타임아웃 또는 해결 — 순찰 재개')
-            self.gas_tracking = False
-            self._gas_start_time = None
-            self.patrol_active = True
-            self.publish_mode('PATROL')
+        if not self.gas_tracking or self.evacuating:
+            return
+        now = time.time()
+
+        # 1) 가스 소실: 일정 시간 가스 알림이 없으면 누출 해소/소실로 판단
+        if (self._last_gas_seen is not None
+                and now - self._last_gas_seen > self.gas_lost_timeout):
+            self.get_logger().warn('💨 가스 미검출 %d초 — 누출 해소/소실로 판단, 순찰 재개'
+                                   % int(self.gas_lost_timeout))
+            self.publish_status('[가스종료] 가스 미검출 %d초 — 누출 해소/소실로 판단. 순찰 재개'
+                                % int(self.gas_lost_timeout))
+            self._end_gas_tracking()
+            return
+
+        # 2) 하드캡: 가스는 계속 있는데 오래 못 찾으면 실패 보고 후 복귀
+        if (self._gas_start_time is not None
+                and now - self._gas_start_time > self.gas_timeout):
+            self.get_logger().warn('⏱ 추적 %d초 초과 — 누출원 특정 실패, 수동 점검 필요'
+                                   % int(self.gas_timeout))
+            self.publish_status('[가스미특정] 추적 %d초 초과 — 누출원 특정 실패, 수동 점검 필요. 순찰 재개'
+                                % int(self.gas_timeout))
+            self._end_gas_tracking()
+
+    def _end_gas_tracking(self):
+        self.gas_tracking = False
+        self._gas_start_time = None
+        self._last_gas_seen = None
+        self.patrol_active = True
+        self.publish_mode('PATROL')
 
     def run_patrol(self):
         self.get_logger().info('NavigateToPose 액션 서버 대기 중...')
