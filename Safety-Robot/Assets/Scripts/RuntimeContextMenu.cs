@@ -25,10 +25,19 @@ public class RuntimeContextMenu : MonoBehaviour
     private const float ItemHeight = 28f;
     private const float Padding    = 8f;
 
-    void Start()
+    // 현재 활성 카메라 — 1인칭/3인칭 전환 시 꺼진 카메라로 레이를 쏘는 버그 방지.
+    // (Start에서 한 번만 캐싱하면 카메라 전환 후 우클릭이 안 먹음)
+    Camera ActiveCamera()
     {
-        if (targetCamera == null)
-            targetCamera = Camera.main;
+        if (targetCamera != null && targetCamera.isActiveAndEnabled)
+            return targetCamera;
+        if (Camera.main != null)
+            return Camera.main;
+        // MainCamera 태그가 없어도 활성 카메라 탐색
+        foreach (var c in Camera.allCameras)
+            if (c.isActiveAndEnabled)
+                return c;
+        return null;
     }
 
     void Update()
@@ -48,11 +57,18 @@ public class RuntimeContextMenu : MonoBehaviour
 
     void TryOpenMenu()
     {
+        Camera cam = ActiveCamera();
+        if (cam == null)
+        {
+            Debug.LogWarning("[RuntimeContextMenu] 활성 카메라를 찾을 수 없음 — 우클릭 무시");
+            return;
+        }
+
         GaussianPlumeModel gasLeak = null;
         MachineHeat machine = null;
 
         // 1차: 콜라이더 기반 레이캐스트 (MachineHeat 등 메시 오브젝트용)
-        Ray ray = targetCamera.ScreenPointToRay(Input.mousePosition);
+        Ray ray = cam.ScreenPointToRay(Input.mousePosition);
         if (Physics.Raycast(ray, out RaycastHit hit, raycastDistance))
         {
             gasLeak = hit.collider.GetComponentInParent<GaussianPlumeModel>();
@@ -61,7 +77,7 @@ public class RuntimeContextMenu : MonoBehaviour
 
         // 2차: 가스 누출원은 파티클 시스템(콜라이더 없음) → 스크린 좌표 근접 탐색
         if (gasLeak == null && machine == null)
-            gasLeak = FindNearestGasLeakOnScreen();
+            gasLeak = FindNearestGasLeakOnScreen(cam);
 
         float mouseGUIy = Screen.height - Input.mousePosition.y;
         float x = Mathf.Clamp(Input.mousePosition.x, 0, Screen.width  - MenuWidth - 5);
@@ -92,7 +108,7 @@ public class RuntimeContextMenu : MonoBehaviour
 
     // 가스 누출원(GaussianPlumeModel)은 파티클 오브젝트라 콜라이더가 없음.
     // leakSource 위치를 스크린에 투영해 마우스와 가장 가까운 것을 반환.
-    GaussianPlumeModel FindNearestGasLeakOnScreen()
+    GaussianPlumeModel FindNearestGasLeakOnScreen(Camera cam)
     {
         var plumes = FindObjectsByType<GaussianPlumeModel>(FindObjectsSortMode.None);
         float minDist = gasPickRadius;
@@ -102,7 +118,7 @@ public class RuntimeContextMenu : MonoBehaviour
         foreach (var p in plumes)
         {
             Transform pivot = p.leakSource != null ? p.leakSource : p.transform;
-            Vector3 screenPos = targetCamera.WorldToScreenPoint(pivot.position);
+            Vector3 screenPos = cam.WorldToScreenPoint(pivot.position);
             if (screenPos.z < 0f) continue; // 카메라 뒤쪽
 
             float dist = Vector2.Distance(new Vector2(screenPos.x, screenPos.y), mousePos);

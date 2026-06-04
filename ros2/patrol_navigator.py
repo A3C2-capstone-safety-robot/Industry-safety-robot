@@ -4,6 +4,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from nav2_msgs.action import NavigateToPose
+from nav2_msgs.srv import ClearEntireCostmap
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import String
@@ -96,6 +97,14 @@ class PatrolNavigator(Node):
         self._status_pub = self.create_publisher(String, '/robot_status', 10)
         self._mode_pub = self.create_publisher(String, '/robot_mode', 10)
         self._cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)  # 스턱 탈출용 직접 제어
+
+        # 코스트맵 클리어 서비스 — 대피 직전 유령 장애물 제거용
+        self._clear_global_cli = self.create_client(
+            ClearEntireCostmap, '/global_costmap/clear_entirely_global_costmap',
+            callback_group=cb)
+        self._clear_local_cli = self.create_client(
+            ClearEntireCostmap, '/local_costmap/clear_entirely_local_costmap',
+            callback_group=cb)
 
         self.inspection_points = self.load_inspection_points()
         self.get_logger().info('점검 지점 %d개 로드 완료' % len(self.inspection_points))
@@ -370,7 +379,12 @@ class PatrolNavigator(Node):
                 return False
             time.sleep(0.2)
 
-        return status[0] == GoalStatus.STATUS_SUCCEEDED
+        ok = status[0] == GoalStatus.STATUS_SUCCEEDED
+        if not ok:
+            # 4=SUCCEEDED, 5=CANCELED, 6=ABORTED(보통 '경로 계산 실패')
+            self.get_logger().warn('이동 실패 — GoalStatus=%s (%.1f초 경과)'
+                                   % (status[0], time.time() - start_time))
+        return ok
 
     # 누출원 근처(반경 m)를 지나는 출구 경로에 줄 가산 비용
     LEAK_AVOID_RADIUS = 3.0
@@ -399,19 +413,52 @@ class PatrolNavigator(Node):
         t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / l2))
         return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
 
+    def _clear_costmaps(self):
+        """코스트맵 클리어 — 추적 중 쌓인 유령 장애물이 대피 경로를 막는 것 방지"""
+        for name, cli in (('global', self._clear_global_cli),
+                          ('local', self._clear_local_cli)):
+            try:
+                if cli.wait_for_service(timeout_sec=1.0):
+                    cli.call_async(ClearEntireCostmap.Request())
+                else:
+                    self.get_logger().warn('%s costmap clear 서비스 응답 없음' % name)
+            except Exception as e:
+                self.get_logger().warn('costmap clear 실패: %s' % e)
+
     def evacuate(self, door):
         time.sleep(2.0)
+        # 대피 전 코스트맵 클리어 (정적 맵은 유지, 스캔으로 쌓인 장애물만 리셋)
+        self._clear_costmaps()
+        time.sleep(1.0)
+
         # 가까운 순서대로 모든 출구 시도 — 단, 누출원 근처를 지나는 출구는 후순위
         doors = sorted(self.doors, key=self._door_cost)
         if self._leak_xy is not None:
             self.get_logger().warn('대피 출구 정렬: 누출원(%.1f, %.1f) 회피 반영'
                                    % self._leak_xy)
         success = False
+        nudged = False
         for attempt in range(2):                  # 전 출구 실패 시 1회 재시도
             for d in doors:
                 self.get_logger().warn('🚶 대피 → %s' % d['name'])
-                if self.go_to_pose(d['x'], d['y'], 0.0,
-                                   abort_check=lambda: False, timeout=90.0):
+                t0 = time.time()
+                ok = self.go_to_pose(d['x'], d['y'], 0.0,
+                                     abort_check=lambda: False, timeout=90.0)
+
+                # ★ 수 초 내 즉시 실패 = 출발도 못 한 것 (로봇이 기계에 붙어 있어
+                #   시작점이 inflation 안). 다음 출구로 넘어가봤자 똑같이 실패하므로
+                #   즉시 후진 + 코스트맵 클리어 후 '같은 출구'를 재시도.
+                if not ok and not nudged and time.time() - t0 < 8.0:
+                    nudged = True
+                    self.get_logger().warn('⚠ %s 즉시 실패 — 출발점 막힘 추정. '
+                                           '후진+코스트맵 클리어 후 재시도' % d['name'])
+                    self._nudge_backward(2.0)
+                    self._clear_costmaps()
+                    time.sleep(2.0)
+                    ok = self.go_to_pose(d['x'], d['y'], 0.0,
+                                         abort_check=lambda: False, timeout=90.0)
+
+                if ok:
                     success = True
                     self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % d['name'])
                     self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % d['name'])
@@ -422,11 +469,10 @@ class PatrolNavigator(Node):
             if success:
                 break
             if attempt == 0:
-                # 전 출구 즉시 실패 = 로봇이 장애물(과열 기계 등)에 붙어 있어
-                # 출발점이 inflation 영역 안 → 플래너가 시작조차 못 하는 경우.
-                # 살짝 후진해서 빠져나온 뒤 재시도 (왔던 길이라 후진은 안전).
+                # 전 출구 실패 — 한 번 더 후진으로 빼고 전체 재시도
                 self.get_logger().warn('전 출구 실패 — 후진으로 장애물 이탈 후 재시도')
                 self._nudge_backward(2.0)
+                self._clear_costmaps()
                 time.sleep(3.0)
 
         if not success:

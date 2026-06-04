@@ -173,6 +173,11 @@ public class MothSearchAlgorithm : MonoBehaviour
     private float escapeCommitUntil = -1f;
     private float localMaxHold = 0f;             // 국소최대 연속 유지 시간
 
+    // 목표를 향해 전진 중인지 추적 (우회 주행 중 조기 수렴 방지)
+    private float progressCheckTimer = 0f;
+    private float prevGoalDist = float.PositiveInfinity;
+    private bool movingTowardGoal = false;
+
     // ============================================================
     //  검증 주행 (Verify) — "주변을 실제로 돌아보고 전부 낮으면 확정"
     // ============================================================
@@ -252,6 +257,9 @@ public class MothSearchAlgorithm : MonoBehaviour
         trapPoints.Clear();
         escapeCommitUntil = -1f;
         localMaxHold = 0f;
+        progressCheckTimer = 0f;
+        prevGoalDist = float.PositiveInfinity;
+        movingTowardGoal = false;
     }
     void Update()
     {
@@ -282,9 +290,22 @@ public class MothSearchAlgorithm : MonoBehaviour
             }
         }
 
-        // Cast(신호 소실 탐색) 중 + 함정 탈출 도망 중에는 수렴 시계 정지
-        // — 헤매는/도망가는 시간(농도가 떨어지는 게 정상)이 조기 수렴으로 이어지지 않게
-        if (currentState == MothState.Cast || Time.time < escapeCommitUntil)
+        // 목표를 향해 실제로 전진 중인지 1초마다 체크
+        progressCheckTimer += Time.deltaTime;
+        if (progressCheckTimer >= 1f)
+        {
+            progressCheckTimer = 0f;
+            float dGoal = Vector3.Distance(transform.position, currentGoal);
+            movingTowardGoal = dGoal < prevGoalDist - 0.2f && dGoal > arrivalRadius;
+            prevGoalDist = dGoal;
+        }
+
+        // 수렴 시계 정지 조건:
+        //  ① Cast(신호 소실 탐색) 중  ② 함정 탈출 도망 중
+        //  ③ 목표를 향해 전진 중 — 탱크 우회 같은 긴 경로에선 농도가 일시적으로
+        //    떨어지는 게 정상인데, 이를 '수렴'으로 오인해 ReturnToBest로 유턴하고
+        //    다시 우회하다 또 유턴하는 무한 왕복 방지
+        if (currentState == MothState.Cast || Time.time < escapeCommitUntil || movingTowardGoal)
             lastImproveTime += Time.deltaTime;
 
         // 국소최대 연속 유지 시간 추적 (한 프레임 오판으로 즉시 확정 방지)

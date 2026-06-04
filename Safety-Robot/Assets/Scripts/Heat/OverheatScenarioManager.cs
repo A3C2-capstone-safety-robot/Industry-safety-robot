@@ -10,10 +10,6 @@ public class OverheatScenarioManager : MonoBehaviour
     [Header("기계 목록")]
     public MachineHeat[] machines;
 
-    [Header("UI 설정")]
-    public bool showUI = true;
-    public KeyCode toggleUIKey = KeyCode.H;        // UI 표시/숨김 토글 키 (히트 = H)
-
     [Header("ROS 발행")]
     public string tempTopicName  = "/machine_temperatures";
     public string alertTopicName = "/thermal_alerts";
@@ -25,10 +21,6 @@ public class OverheatScenarioManager : MonoBehaviour
     private Dictionary<int, float> overheatStartTimes = new Dictionary<int, float>();
     private HashSet<int> latencyLoggedMachines = new HashSet<int>();
 
-    // UI 관련
-    private bool uiVisible = true;
-    private Vector2 scrollPosition;
-
     void Start()
     {
         ros = ROSConnection.GetOrCreateInstance();
@@ -37,15 +29,6 @@ public class OverheatScenarioManager : MonoBehaviour
         // 기존의 AutoOverheatRoutine 주석 처리 및 삭제 (무작위 자동 과열 제거)
 
         InvokeRepeating(nameof(PublishTemperatures), 1f, 1f / publishRate);
-    }
-
-    void Update()
-    {
-        // H 키로 UI 켜고 끄기
-        if (Input.GetKeyDown(toggleUIKey))
-        {
-            uiVisible = !uiVisible;
-        }
     }
 
     // 매 프레임/주기마다 온도 데이터 발행 및 경보 처리
@@ -147,89 +130,27 @@ public class OverheatScenarioManager : MonoBehaviour
     }
 
     // ============================================================
-    //  개발자용 OnGUI 화면 버튼 구현
+    //  캔버스 버튼용 API (Button OnClick에 연결)
     // ============================================================
-    void OnGUI()
+
+    // 정상 상태인 기계 하나를 랜덤으로 골라 과열 시작
+    public void OverheatRandomMachine()
     {
-        if (!showUI || !uiVisible || machines == null) return;
+        if (machines == null || machines.Length == 0) return;
 
-        float panelWidth = 300f;
-        float panelX = 20f; // 가스 누출 매니저와 겹치지 않게 왼쪽 상단(20)에 배치
-        float panelY = 20f;
-
-        // 배경 패널 크기 계산
-        float panelHeight = Mathf.Min(140 + machines.Length * 32, 500);
-        GUI.Box(new Rect(panelX, panelY, panelWidth, panelHeight), "");
-
-        GUILayout.BeginArea(new Rect(panelX + 10, panelY + 10, panelWidth - 20, panelHeight - 20));
-
-        // 제목
-        GUIStyle titleStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 16,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
-        GUILayout.Label("Machine Overheat Control", titleStyle);
-        GUILayout.Space(10);
-
-        // 전체 초기화 버튼
-        GUI.backgroundColor = new Color(0.4f, 0.6f, 1f); // 파란색 계열
-        if (GUILayout.Button("Reset All Machines", GUILayout.Height(30)))
-        {
-            ResetAll();
-        }
-        GUI.backgroundColor = Color.white;
-        GUILayout.Space(10);
-
-        // 각 머신별 스크롤 뷰 및 버튼 리스트
-        scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(320));
-
+        List<int> available = new List<int>();
         for (int i = 0; i < machines.Length; i++)
+            if (machines[i].Status == MachineHeat.HeatStatus.Normal)
+                available.Add(i);
+
+        if (available.Count == 0)
         {
-            var m = machines[i];
-            string machineName = m.machineId;
-
-            // 현재 과열 중인지 여부 판단 (임의로 온도가 baseline보다 높거나 Status가 Normal이 아니면 과열 상태 표시)
-            bool isOverheating = m.Status != MachineHeat.HeatStatus.Normal;
-
-            GUILayout.BeginHorizontal();
-
-            // 상태 표시 점 (과열중이면 빨간색, 정상 성향이면 초록색)
-            GUIStyle statusStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = isOverheating ? Color.red : Color.green }
-            };
-            GUILayout.Label(isOverheating ? "●" : "○", statusStyle, GUILayout.Width(15));
-
-            // 머신 이름과 현재 온도 표시
-            GUILayout.Label($"{machineName} ({m.GetNoisyTemp():F1}°C)", GUILayout.Width(145));
-
-            // Start / Stop 버튼 생성
-            if (isOverheating)
-            {
-                GUI.backgroundColor = new Color(1f, 0.6f, 0.6f); // 연빨강
-                if (GUILayout.Button("Cool", GUILayout.Width(65))) // 과열 식히기
-                {
-                    StopMachineOverheat(i);
-                }
-            }
-            else
-            {
-                GUI.backgroundColor = new Color(1f, 0.8f, 0.4f); // 주황/노랑 계열
-                if (GUILayout.Button("Heat", GUILayout.Width(65))) // 과열 시작
-                {
-                    StartMachineOverheat(i);
-                }
-            }
-            GUI.backgroundColor = Color.white;
-
-            GUILayout.EndHorizontal();
-            GUILayout.Space(4);
+            Debug.Log("[시나리오] 모든 기계가 이미 과열 중 — 랜덤 과열 불가");
+            return;
         }
 
-        GUILayout.EndScrollView();
-        GUILayout.EndArea();
+        int idx = available[Random.Range(0, available.Count)];
+        StartMachineOverheat(idx);
+        Debug.Log($"[시나리오] (버튼) 랜덤 과열: {machines[idx].machineId}");
     }
 }
