@@ -56,6 +56,12 @@ _prev_source_found = False
 _last_report_time = 0.0
 REPORT_COOLDOWN_SEC = 60.0  # 같은 위험 상태 지속 시 재생성 최소 간격
 
+# ── 위험도 래치 ──
+# 추적/대피 중에는 로봇이 가스에서 멀어져 측정값이 떨어져도 경보를 내리지 않는다.
+# 순찰(PATROL) 복귀 시에만 래치 해제 → 대시보드가 사고 종료 후에 Normal로 돌아옴.
+RISK_RANK = {"Normal": 0, "Caution": 1, "Warning": 2, "Danger": 3}
+_held_final_risk = "Normal"
+
 
 def _generate_report_async(trigger: str):
     """LLM 호출은 수 초 걸리므로 백그라운드 스레드에서 생성"""
@@ -95,6 +101,20 @@ def update_sensor(raw_data: dict):
         latest_sensor_data
     )
 
+    # ── 위험도 래치: 추적/대피 중에는 위험도가 내려가지 않게 유지 ──
+    global _held_final_risk
+    mode = latest_sensor_data.get("robot_mode")
+    measured_risk = latest_risk_result.get("final_risk", "Normal")
+
+    if mode in ("GAS_TRACKING", "EVACUATING"):
+        if RISK_RANK.get(measured_risk, 0) > RISK_RANK.get(_held_final_risk, 0):
+            _held_final_risk = measured_risk
+        if RISK_RANK.get(_held_final_risk, 0) > RISK_RANK.get(measured_risk, 0):
+            latest_risk_result["final_risk"] = _held_final_risk
+            latest_risk_result["risk_held"] = True  # 대시보드 표시용
+    else:
+        _held_final_risk = "Normal"
+
     # ── 자동 리포트 트리거 판정 ──
     final_risk = latest_risk_result.get("final_risk", "Normal")
     source_found = bool(latest_sensor_data.get("source_found"))
@@ -127,11 +147,10 @@ def get_latest_report():
 
 @app.get("/sensor")
 def get_sensor():
-    risk_result = analyze_risk(latest_sensor_data)
-
+    # 재계산하지 않고 래치가 반영된 최신 위험도를 그대로 반환
     return {
         "sensor_data": latest_sensor_data,
-        "risk": risk_result,
+        "risk": latest_risk_result,
     }
 
 @app.get("/report")

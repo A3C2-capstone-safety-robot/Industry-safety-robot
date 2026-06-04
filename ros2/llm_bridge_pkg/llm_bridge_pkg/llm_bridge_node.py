@@ -218,11 +218,26 @@ class LlmBridgeNode(Node):
             peak = float(parts[2]) if len(parts) > 2 else None
         except ValueError:
             peak = None
+
+        # Unity 좌표 → ROS 좌표 변환 + 구역 판정 (대시보드 '누출원: D구역 (x, y)' 표시용)
+        zone = None
+        ros_xy = None
+        if len(parts) > 3:
+            try:
+                ux, uy, uz = [float(v) for v in parts[3].split(",")]
+                rx, ry = uz, -ux
+                ros_xy = f"({rx:.1f}, {ry:.1f})"
+                zone = self._zone_name(rx, ry)
+            except ValueError:
+                pass
+
         with self._state_lock:
             self.latest_moth_result = {
                 "gas_type": self._normalize_gas_type(parts[1]) if len(parts) > 1 else None,
                 "peak_concentration": peak,
                 "position_unity_xyz": parts[3] if len(parts) > 3 else None,
+                "position_ros_xy": ros_xy,
+                "zone": zone,
                 "danger": (parts[4] == "DANGER") if len(parts) > 4 else None,
             }
 
@@ -327,18 +342,23 @@ class LlmBridgeNode(Node):
             "status_events": list(self.status_events),     # 시간순 상황 보고 타임라인
         }
 
-    def _resolve_location(self) -> str:
-        if self.latest_odom_xy is None:
-            return self.default_location
-
-        x_pos, y_pos = self.latest_odom_xy
+    def _zone_name(self, x_pos: float, y_pos: float) -> str | None:
         for zone in self.zone_rectangles:
             if (
                 zone["x_min"] <= x_pos <= zone["x_max"]
                 and zone["y_min"] <= y_pos <= zone["y_max"]
             ):
                 return zone["name"]
+        return None
 
+    def _resolve_location(self) -> str:
+        if self.latest_odom_xy is None:
+            return self.default_location
+
+        x_pos, y_pos = self.latest_odom_xy
+        name = self._zone_name(x_pos, y_pos)
+        if name:
+            return name
         return f"map(x={x_pos:.2f}, y={y_pos:.2f})"
 
     def _load_zone_rectangles(self, raw_value: str) -> list[dict]:

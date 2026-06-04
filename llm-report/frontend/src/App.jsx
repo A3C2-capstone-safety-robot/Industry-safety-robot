@@ -85,17 +85,42 @@ function App() {
   // 위험도 기반 상황 요약 — 실제 이상이 있는 항목만 문장에 포함
   const alerts = [];
   if (risk.gas_risk && risk.gas_risk !== "Normal") {
-    alerts.push(`${gas.gas_type} ${gas.concentration_ppm}ppm 감지`);
+    alerts.push(`${gas.gas_type} ${Number(gas.concentration_ppm).toFixed(1)}ppm 감지`);
   }
   if (risk.temperature_risk && risk.temperature_risk !== "Normal") {
     const machineId = risk.hottest_machine_id || hottestMachine?.id || "설비";
     const temp = risk.max_temperature ?? hottestMachine?.temperature;
     alerts.push(`${machineId} 과열 (${Number(temp).toFixed(1)}°C)`);
   }
-  const summary = alerts.length
-    ? `${alerts.join(" 및 ")}. ${sensor.location} 접근 통제 및 즉시 대응이 필요합니다.`
-    : `이상 징후 없음 — 정상 감시 중입니다. (현재 위치: ${sensor.location})`;
-  const summaryIcon = alerts.length ? "⚠️" : "✅";
+
+  // 추적/대피 중 래치로 경보 유지 중인 경우 (순간 측정값은 정상이어도)
+  const riskHeld = !!risk.risk_held;
+  const modeLabel = { GAS_TRACKING: "누출원 추적", EVACUATING: "대피" }[
+    sensor.robot_mode
+  ];
+
+  let summary;
+  if (alerts.length) {
+    summary = `${alerts.join(" 및 ")}. ${sensor.location} 접근 통제 및 즉시 대응이 필요합니다.${
+      modeLabel ? ` (로봇 ${modeLabel} 진행 중)` : ""
+    }`;
+  } else if (riskHeld) {
+    summary = `사고 대응 진행 중 — 로봇이 ${modeLabel || "대응"} 중입니다. 상황 종료 시까지 경보가 유지됩니다.`;
+  } else {
+    summary = `이상 징후 없음 — 정상 감시 중입니다. (현재 위치: ${sensor.location})`;
+  }
+  const summaryIcon = alerts.length || riskHeld ? "⚠️" : "✅";
+
+  // 누출원 상태 요약 (검출 가스 카드)
+  const src = sensor.source_found;
+  let sourceStatus;
+  if (src) {
+    sourceStatus = `누출원: ${src.zone || "구역 미상"} ${src.position_ros_xy || ""}`;
+  } else if (sensor.robot_mode === "GAS_TRACKING") {
+    sourceStatus = "누출원: 추적 중...";
+  } else {
+    sourceStatus = "누출원: 미특정";
+  }
   
    return (
     <div style={styles.page}>
@@ -131,6 +156,9 @@ function App() {
           <h2 style={styles.cardValue}>{gas.gas_type}</h2>
           <p style={styles.cardSub}>
             {Number(gas.concentration_ppm).toFixed(1)} ppm
+          </p>
+          <p style={{ ...styles.cardSub, marginTop: "6px", fontWeight: 700 }}>
+            {sourceStatus}
           </p>
         </div>
 
