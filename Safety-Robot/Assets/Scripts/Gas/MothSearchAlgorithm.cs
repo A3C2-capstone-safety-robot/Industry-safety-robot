@@ -385,10 +385,16 @@ public class MothSearchAlgorithm : MonoBehaviour
         else
         {
             // Nav2로 목표 좌표 발행
+            // ★ Idle/SourceFound 상태에서는 발행 금지!
+            //   SourceFound 직후 '내 현재 위치로 와' 골이 /goal_pose로 나가면
+            //   대피(NavigateToPose) 골을 가로채 0.6초 만에 '대피 완료'가 뜨는 버그 방지.
+            bool searching = currentState != MothState.Idle
+                          && currentState != MothState.SourceFound;
+
             // ★ 같은 goal을 1Hz로 재발행하면 Nav2가 매번 재계획 → 로봇이 버벅임.
             //   goal이 실제로 바뀌었거나(>0.5m), 유실 대비 5초 경과 시에만 발행.
             goalTimer += Time.deltaTime;
-            if (goalTimer >= 1f / goalPublishRate)
+            if (searching && goalTimer >= 1f / goalPublishRate)
             {
                 goalTimer = 0f;
                 bool goalChanged = Vector3.Distance(currentGoal, lastPublishedGoal) > 0.5f;
