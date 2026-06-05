@@ -163,15 +163,24 @@ function App() {
         </div>
 
         <div style={styles.card}>
-          <p style={styles.cardLabel}>설비 온도 (최고)</p>
+          <p style={styles.cardLabel}>설비 온도 (열화상 관측 최고)</p>
           <h2 style={styles.cardValue}>
-            {Number(
-              risk.max_temperature ?? hottestMachine?.temperature ?? 0
-            ).toFixed(1)}
-            °C
+            {thermal.machines?.length
+              ? `${Number(
+                  risk.max_temperature ?? hottestMachine?.temperature ?? 0
+                ).toFixed(1)}°C`
+              : "관측 전"}
           </h2>
           <p style={styles.cardSub}>
-            {risk.hottest_machine_id || hottestMachine?.id || "-"}
+            {(() => {
+              const hottestId =
+                risk.hottest_machine_id || hottestMachine?.id;
+              if (!hottestId) return "로봇이 아직 설비를 촬영하지 않음";
+              const seen = thermal.machines?.find(
+                (m) => m.id === hottestId
+              )?.last_seen;
+              return `${hottestId}${seen ? ` · ${seen} 관측` : ""}`;
+            })()}
           </p>
         </div>
 

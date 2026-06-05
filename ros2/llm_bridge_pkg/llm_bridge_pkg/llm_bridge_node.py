@@ -43,6 +43,8 @@ class LlmBridgeNode(Node):
         self.declare_parameter("gas_type_topic", "/gas_type")
         self.declare_parameter("machine_temperatures_topic", "/machine_temperatures")
         self.declare_parameter("thermal_alert_topic", "/thermal_alerts")
+        # 로봇 열화상이 '실제로 관측한' 기계 온도 (화각+가림 필터 통과분만)
+        self.declare_parameter("thermal_raw_topic", "/thermal/raw_values")
         self.declare_parameter("odom_topic", "/odom")
         # ── 사건(이벤트) 토픽 — 리포트의 핵심 재료 ──
         self.declare_parameter("robot_status_topic", "/robot_status")
@@ -82,6 +84,9 @@ class LlmBridgeNode(Node):
         self.latest_odom_xy = None
         self.latest_robot_mode = None
         self.latest_moth_result = None
+        # 로봇이 열화상으로 관측한 기계별 온도 — 마지막 관측값 유지 (라쳇)
+        # {기계이름: {"temperature": float, "last_seen": "HH:MM:SS"}}
+        self.measured_machines = {}
         # 최근 상태 보고 타임라인 — 리포트 생성용 ([{"time":..., "text":...}, ...])
         self.status_events = deque(
             maxlen=int(self.get_parameter("max_status_events").value)
@@ -153,6 +158,12 @@ class LlmBridgeNode(Node):
             self._on_moth_result,
             qos,
         )
+        self.create_subscription(
+            String,
+            self.get_parameter("thermal_raw_topic").value,
+            self._on_thermal_raw,
+            qos,
+        )
 
         interval = float(self.get_parameter("post_interval_sec").value)
         self.create_timer(interval, self._post_latest_sensor_data)
@@ -203,6 +214,26 @@ class LlmBridgeNode(Node):
                     "text": text,
                 }
             )
+
+    def _on_thermal_raw(self, msg: String):
+        # thermal_visualizer가 발행하는 '화각 내 관측된 기계' JSON: {"machine_3": 78.5, ...}
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, dict):
+            return
+
+        now = _time.strftime("%H:%M:%S")
+        with self._state_lock:
+            for name, temp in data.items():
+                try:
+                    self.measured_machines[name] = {
+                        "temperature": float(temp),
+                        "last_seen": now,
+                    }
+                except (TypeError, ValueError):
+                    continue
 
     def _on_robot_mode(self, msg: String):
         with self._state_lock:
@@ -336,6 +367,11 @@ class LlmBridgeNode(Node):
             "machine_temperatures": self.latest_machine_temperatures,
             "thermal_alert": self.latest_thermal_alert,
             "location": self._resolve_location(),
+            # 로봇 열화상 실측 온도 (마지막 관측값 유지) — 대시보드 표시는 이걸 사용
+            "measured_machines": [
+                {"id": name, **info}
+                for name, info in self.measured_machines.items()
+            ],
             # ── 리포트 생성용 사건 데이터 ──
             "robot_mode": self.latest_robot_mode,          # PATROL / GAS_TRACKING / EVACUATING
             "source_found": self.latest_moth_result,       # 누출원 특정 결과 (좌표·농도·위험여부)
