@@ -134,7 +134,9 @@ public class GasHeatmap : MonoBehaviour
         float startX = centerPosition.x - halfSize;
         float startZ = centerPosition.z - halfSize;
         float step = areaSize / resolution;
-        float sampleY = centerPosition.y + 0.5f; // 바닥에서 0.5m 높이에서 샘플링
+        // ★ 높이 무시 2D 농도 사용 — 센서(VirtualGasSensor)와 동일 기준.
+        //   3D를 쓰면 LNG처럼 떠오르는 가스는 바닥 샘플링 높이에서 사라져
+        //   '로봇은 추적 중인데 히트맵엔 안 보이는' 불일치 발생.
 
         for (int y = 0; y < resolution; y++)
         {
@@ -149,7 +151,7 @@ public class GasHeatmap : MonoBehaviour
                 for (int i = 0; i < allPlumes.Length; i++)
                 {
                     if (allPlumes[i] == null || !allPlumes[i].isLeaking) continue;
-                    float conc = allPlumes[i].GetConcentration(worldX, sampleY, worldZ);
+                    float conc = allPlumes[i].GetConcentration(worldX, worldZ);
                     totalHazard += conc / Mathf.Max(1f, allPlumes[i].dangerThreshold);
                 }
 

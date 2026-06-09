@@ -38,8 +38,17 @@ public class CameraModeManager : MonoBehaviour
     [Tooltip("3인칭 카메라의 ThirdPersonFollowCamera 를 연결. 수동조작 ON 동안 로봇을 따라다니며 마우스로 둘러봄")]
     public ThirdPersonFollowCamera followCamController;
 
+    [Header("선택: 팔로우 모드 버튼 색상")]
+    [Tooltip("버튼의 Image 를 연결하면 ON/OFF 에 따라 색이 바뀜")]
+    public Image followButtonImage;
+    public Color followOnColor = new Color(0.30f, 0.60f, 0.95f);   // ON: 파랑
+    public Color followOffColor = new Color(0.85f, 0.85f, 0.85f);  // OFF: 회색
+    [Tooltip("버튼 글자(선택). 연결하면 ON/OFF 텍스트로 바뀜")]
+    public Text followButtonLabel;
+
     public CameraViewMode CurrentMode { get; private set; }
     public bool ManualDriveActive { get; private set; }
+    public bool FollowModeActive { get; private set; }
     private bool previousCmdVelSuppressMovement;
 
     void Start()
@@ -55,7 +64,37 @@ public class CameraModeManager : MonoBehaviour
             followCamController.enabled = false;
 
         UpdateManualButtonVisual();
+        UpdateFollowButtonVisual();
         ApplyMode(defaultMode);
+    }
+
+    // ── 자율주행 팔로우 모드 토글 — UI 버튼의 OnClick 에 연결 ──
+    // ON: 3인칭 카메라가 로봇을 따라다님 (자율주행 구경용, 마우스로 둘러보기 가능)
+    // OFF: 카메라가 로봇과 분리되어 다시 자유 시점
+    public void ToggleFollowMode()
+    {
+        SetFollowMode(!FollowModeActive);
+    }
+
+    public void SetFollowMode(bool on)
+    {
+        FollowModeActive = on;
+
+        // 팔로우는 3인칭에서만 의미 있음 — 켜면 3인칭으로 강제 전환
+        ApplyMode(on ? CameraViewMode.ThirdPerson : CurrentMode);
+
+        UpdateFollowButtonVisual();
+        Debug.Log(on
+            ? "[CameraModeManager] 팔로우 모드 ON — 카메라가 로봇 추적"
+            : "[CameraModeManager] 팔로우 모드 OFF — 자유 시점 복원");
+    }
+
+    void UpdateFollowButtonVisual()
+    {
+        if (followButtonImage != null)
+            followButtonImage.color = FollowModeActive ? followOnColor : followOffColor;
+        if (followButtonLabel != null)
+            followButtonLabel.text = FollowModeActive ? "팔로우 ON" : "팔로우 OFF";
     }
 
     public void SetThirdPersonView()
@@ -89,27 +128,10 @@ public class CameraModeManager : MonoBehaviour
             manualDriveController.enabled = on;
         SetCmdVelSuppressedForManualDrive(on);
 
-        if (on)
-        {
-            // 수동 조작: 3인칭 카메라로 전환 + 팔로우 카메라 ON (로봇 따라다니며 마우스 둘러보기)
-            CurrentMode = CameraViewMode.ThirdPerson;
-            SetCameraState(thirdPersonCamera, true);
-            SetCameraState(firstPersonCamera, false);
-
-            // 자유시점/1인칭 조작은 끔 (WASD·마우스 충돌 방지)
-            SetControllerState(thirdPersonController, false);
-            SetControllerState(firstPersonController, false);
-
-            if (followCamController != null)
-                followCamController.enabled = true;
-        }
-        else
-        {
-            // 팔로우 카메라 끄고, 카메라 조작을 현재 모드에 맞게 복원
-            if (followCamController != null)
-                followCamController.enabled = false;
-            ApplyMode(CurrentMode);
-        }
+        // 수동 조작은 3인칭 팔로우 시점 강제, 해제 시 현재 모드 복원
+        // (팔로우 카메라/컨트롤러 on-off는 ApplyMode가 일괄 처리 —
+        //  팔로우 모드가 켜져 있으면 수동조작을 꺼도 팔로우는 유지됨)
+        ApplyMode(on ? CameraViewMode.ThirdPerson : CurrentMode);
 
         UpdateManualButtonVisual();
 
@@ -152,11 +174,16 @@ public class CameraModeManager : MonoBehaviour
         SetCameraState(thirdPersonCamera, thirdPersonActive);
         SetCameraState(firstPersonCamera, !thirdPersonActive);
 
-        if (ManualDriveActive)
+        // 팔로우 카메라: (수동조작 또는 팔로우 모드) + 3인칭일 때만 ON
+        bool followNow = thirdPersonActive && (ManualDriveActive || FollowModeActive);
+        if (followCamController != null)
+            followCamController.enabled = followNow;
+
+        if (ManualDriveActive || followNow)
         {
-            // 수동 조작 중이면 카메라 컨트롤러는 계속 꺼둠
+            // 팔로우/수동조작 중에는 자유 카메라 컨트롤러를 꺼서 마우스 충돌 방지
             SetControllerState(thirdPersonController, false);
-            SetControllerState(firstPersonController, false);
+            SetControllerState(firstPersonController, !thirdPersonActive && !ManualDriveActive);
         }
         else
         {

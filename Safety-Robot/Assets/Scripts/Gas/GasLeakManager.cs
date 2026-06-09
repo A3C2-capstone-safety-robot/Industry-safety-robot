@@ -1,19 +1,24 @@
 // GasLeakManager.cs
-// 가스 누출 시뮬레이션 관리자 — UI 버튼 + 랜덤 자동 누출
+// 가스 누출 시뮬레이션 관리자 — 캔버스 버튼 API + 랜덤 자동 누출
 using UnityEngine;
+using UnityEngine.UI;
 using System.Collections.Generic;
 
 public class GasLeakManager : MonoBehaviour
 {
     [Header("랜덤 누출 설정")]
-    public bool enableRandomLeak = true;           // 랜덤 누출 활성화
+    public bool enableRandomLeak = false;          // 랜덤 누출 모드 (UI 토글 버튼으로 제어)
     public float randomLeakMinInterval = 30f;      // 최소 대기 시간 (초)
     public float randomLeakMaxInterval = 120f;     // 최대 대기 시간 (초)
     public float randomLeakDuration = 60f;         // 랜덤 누출 지속 시간 (초)
 
-    [Header("UI 설정")]
-    public bool showUI = true;
-    public KeyCode toggleUIKey = KeyCode.G;        // UI 표시/숨김 토글 키 (가스 = G)
+    [Header("선택: 랜덤 누출 토글 버튼 색상")]
+    [Tooltip("버튼의 Image 를 연결하면 ON/OFF 에 따라 색이 바뀜")]
+    public Image randomButtonImage;
+    public Color randomOnColor = new Color(0.30f, 0.78f, 0.40f);   // ON: 초록
+    public Color randomOffColor = new Color(0.85f, 0.85f, 0.85f);  // OFF: 회색
+    [Tooltip("버튼 글자(선택). 연결하면 ON/OFF 텍스트로 바뀜")]
+    public Text randomButtonLabel;
 
     // 씬의 모든 누출원 자동 탐지
     private GaussianPlumeModel[] allLeakPoints;
@@ -21,15 +26,46 @@ public class GasLeakManager : MonoBehaviour
     private int currentRandomIndex = -1;
     private float randomLeakEndTime;
 
-    // UI 관련
-    private bool uiVisible = true;
-    private Vector2 scrollPosition;
-
     void Start()
     {
         // 씬에서 모든 GaussianPlumeModel 자동으로 찾기
         RefreshLeakPoints();
         ScheduleNextRandomLeak();
+        UpdateRandomButtonVisual();
+    }
+
+    // ── 랜덤 누출 모드 토글 — UI 버튼의 OnClick 에 연결 ──
+    public void ToggleRandomLeak()
+    {
+        SetRandomLeakEnabled(!enableRandomLeak);
+    }
+
+    public void SetRandomLeakEnabled(bool on)
+    {
+        enableRandomLeak = on;
+
+        if (on)
+        {
+            // 켜는 즉시 터지지 않게 새로 스케줄
+            ScheduleNextRandomLeak();
+        }
+        else if (currentRandomIndex >= 0)
+        {
+            // 진행 중이던 랜덤 누출도 정리
+            StopLeak(currentRandomIndex);
+            currentRandomIndex = -1;
+        }
+
+        UpdateRandomButtonVisual();
+        Debug.Log($"[GasLeakManager] 랜덤 누출 모드: {(on ? "ON" : "OFF")}");
+    }
+
+    void UpdateRandomButtonVisual()
+    {
+        if (randomButtonImage != null)
+            randomButtonImage.color = enableRandomLeak ? randomOnColor : randomOffColor;
+        if (randomButtonLabel != null)
+            randomButtonLabel.text = enableRandomLeak ? "랜덤 누출 ON" : "랜덤 누출 OFF";
     }
 
     // 누출원 목록 갱신
@@ -41,13 +77,7 @@ public class GasLeakManager : MonoBehaviour
 
     void Update()
     {
-        // UI 토글
-        if (Input.GetKeyDown(toggleUIKey))
-        {
-            uiVisible = !uiVisible;
-        }
-
-        // 랜덤 누출 처리
+        // 랜덤 누출 처리 (자동 스케줄)
         if (enableRandomLeak)
         {
             HandleRandomLeak();
@@ -123,97 +153,28 @@ public class GasLeakManager : MonoBehaviour
     }
 
     // ============================================================
-    //  UI (Play 모드에서 화면에 버튼 표시)
+    //  캔버스 버튼용 API (Button OnClick에 연결)
     // ============================================================
 
-    void OnGUI()
+    // 누출 중이 아닌 기계 하나를 랜덤으로 골라 누출 시작
+    public void StartRandomLeakOnce()
     {
-        if (!showUI || !uiVisible || allLeakPoints == null) return;
+        if (allLeakPoints == null || allLeakPoints.Length == 0)
+            RefreshLeakPoints();
 
-        float panelWidth = 280f;
-        float panelX = Screen.width - panelWidth - 20f;
-        float panelY = 20f;
-
-        // 배경 패널
-        GUI.Box(new Rect(panelX, panelY, panelWidth, GetPanelHeight()), "");
-
-        GUILayout.BeginArea(new Rect(panelX + 10, panelY + 10, panelWidth - 20, GetPanelHeight() - 20));
-
-        // 제목
-        GUIStyle titleStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 16,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
-        GUILayout.Label("Gas Leak Control", titleStyle);
-        GUILayout.Space(10);
-
-        // 전체 중지 버튼
-        GUI.backgroundColor = new Color(1f, 0.4f, 0.4f);
-        if (GUILayout.Button("Stop All Leaks", GUILayout.Height(30)))
-        {
-            StopAllLeaks();
-        }
-        GUI.backgroundColor = Color.white;
-        GUILayout.Space(5);
-
-        // 랜덤 누출 토글
-        enableRandomLeak = GUILayout.Toggle(enableRandomLeak, " Enable Random Leak");
-        GUILayout.Space(10);
-
-        // 각 머신별 버튼
-        scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Height(300));
-
+        List<int> available = new List<int>();
         for (int i = 0; i < allLeakPoints.Length; i++)
+            if (!allLeakPoints[i].isLeaking)
+                available.Add(i);
+
+        if (available.Count == 0)
         {
-            var plume = allLeakPoints[i];
-            string machineName = plume.gameObject.name;
-            bool isLeaking = plume.isLeaking;
-
-            GUILayout.BeginHorizontal();
-
-            // 상태 표시
-            GUIStyle statusStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = isLeaking ? Color.red : Color.green }
-            };
-            GUILayout.Label(isLeaking ? "●" : "○", statusStyle, GUILayout.Width(20));
-
-            // 머신 이름 + 가스 타입
-            GUILayout.Label($"{machineName} ({plume.gasType})", GUILayout.Width(140));
-
-            // 시작/중지 버튼
-            if (isLeaking)
-            {
-                GUI.backgroundColor = new Color(1f, 0.6f, 0.6f);
-                if (GUILayout.Button("Stop", GUILayout.Width(60)))
-                {
-                    StopLeak(i);
-                }
-            }
-            else
-            {
-                GUI.backgroundColor = new Color(0.6f, 1f, 0.6f);
-                if (GUILayout.Button("Start", GUILayout.Width(60)))
-                {
-                    StartLeak(i);
-                }
-            }
-            GUI.backgroundColor = Color.white;
-
-            GUILayout.EndHorizontal();
-            GUILayout.Space(2);
+            Debug.Log("[GasLeakManager] 모든 기계가 이미 누출 중 — 랜덤 누출 불가");
+            return;
         }
 
-        GUILayout.EndScrollView();
-        GUILayout.EndArea();
-    }
-
-    float GetPanelHeight()
-    {
-        int count = allLeakPoints != null ? allLeakPoints.Length : 0;
-        return Mathf.Min(100 + count * 28, 450);
+        int idx = available[Random.Range(0, available.Count)];
+        StartLeak(idx);
+        Debug.Log($"[GasLeakManager] (버튼) 랜덤 누출 시작: {allLeakPoints[idx].gameObject.name}");
     }
 }

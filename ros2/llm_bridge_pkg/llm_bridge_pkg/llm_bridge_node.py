@@ -3,8 +3,10 @@
 import json
 import re
 import threading
+import time as _time
 import urllib.error
 import urllib.request
+from collections import deque
 
 import rclpy
 from nav_msgs.msg import Odometry
@@ -41,8 +43,26 @@ class LlmBridgeNode(Node):
         self.declare_parameter("gas_type_topic", "/gas_type")
         self.declare_parameter("machine_temperatures_topic", "/machine_temperatures")
         self.declare_parameter("thermal_alert_topic", "/thermal_alerts")
+        # 로봇 열화상이 '실제로 관측한' 기계 온도 (화각+가림 필터 통과분만)
+        self.declare_parameter("thermal_raw_topic", "/thermal/raw_values")
         self.declare_parameter("odom_topic", "/odom")
-        self.declare_parameter("zone_rectangles", "[]")
+        # ── 사건(이벤트) 토픽 — 리포트의 핵심 재료 ──
+        self.declare_parameter("robot_status_topic", "/robot_status")
+        self.declare_parameter("robot_mode_topic", "/robot_mode")
+        self.declare_parameter("moth_result_topic", "/moth_search/result")
+        self.declare_parameter("max_status_events", 30)
+        # 기본 구역 정의 — patrol_navigator.py의 ZONE_DEFINITIONS와 동일 경계
+        #   A구역: x<0, y<-5 / B구역: x<0, y>=-5 / C구역: 0<=x<21, y<0
+        #   D구역: 0<=x<21, y>=0 / E구역: x>=21
+        # (반평면을 ±100m 한계의 사각형으로 표현. 맵 바뀌면 파라미터로 덮어쓰기)
+        default_zones = json.dumps([
+            {"name": "A구역", "x_min": -100, "x_max": 0,   "y_min": -100, "y_max": -5},
+            {"name": "B구역", "x_min": -100, "x_max": 0,   "y_min": -5,   "y_max": 100},
+            {"name": "C구역", "x_min": 0,    "x_max": 21,  "y_min": -100, "y_max": 0},
+            {"name": "D구역", "x_min": 0,    "x_max": 21,  "y_min": 0,    "y_max": 100},
+            {"name": "E구역", "x_min": 21,   "x_max": 100, "y_min": -100, "y_max": 100},
+        ], ensure_ascii=False)
+        self.declare_parameter("zone_rectangles", default_zones)
         # Use sensor-data QoS (BEST_EFFORT) for subscriptions. Many simulators /
         # ROS bridges publish sensor topics as BEST_EFFORT, which would otherwise
         # silently mismatch the default RELIABLE profile and deliver no messages.
@@ -62,6 +82,15 @@ class LlmBridgeNode(Node):
         self.latest_machine_temperatures = []
         self.latest_thermal_alert = None
         self.latest_odom_xy = None
+        self.latest_robot_mode = None
+        self.latest_moth_result = None
+        # 로봇이 열화상으로 관측한 기계별 온도 — 마지막 관측값 유지 (라쳇)
+        # {기계이름: {"temperature": float, "last_seen": "HH:MM:SS"}}
+        self.measured_machines = {}
+        # 최근 상태 보고 타임라인 — 리포트 생성용 ([{"time":..., "text":...}, ...])
+        self.status_events = deque(
+            maxlen=int(self.get_parameter("max_status_events").value)
+        )
         self._last_payload_json = None
 
         # Guards shared sensor state (callbacks vs. the POST worker thread).
@@ -111,6 +140,30 @@ class LlmBridgeNode(Node):
             self._on_odom,
             qos,
         )
+        self.create_subscription(
+            String,
+            self.get_parameter("robot_status_topic").value,
+            self._on_robot_status,
+            qos,
+        )
+        self.create_subscription(
+            String,
+            self.get_parameter("robot_mode_topic").value,
+            self._on_robot_mode,
+            qos,
+        )
+        self.create_subscription(
+            String,
+            self.get_parameter("moth_result_topic").value,
+            self._on_moth_result,
+            qos,
+        )
+        self.create_subscription(
+            String,
+            self.get_parameter("thermal_raw_topic").value,
+            self._on_thermal_raw,
+            qos,
+        )
 
         interval = float(self.get_parameter("post_interval_sec").value)
         self.create_timer(interval, self._post_latest_sensor_data)
@@ -146,6 +199,78 @@ class LlmBridgeNode(Node):
                 float(msg.pose.pose.position.x),
                 float(msg.pose.pose.position.y),
             )
+
+    def _on_robot_status(self, msg: String):
+        text = msg.data.strip()
+        if not text:
+            return
+        with self._state_lock:
+            # 같은 메시지 연속 중복 방지 (patrol이 재발행하는 경우)
+            if self.status_events and self.status_events[-1]["text"] == text:
+                return
+            self.status_events.append(
+                {
+                    "time": _time.strftime("%H:%M:%S"),
+                    "text": text,
+                }
+            )
+
+    def _on_thermal_raw(self, msg: String):
+        # thermal_visualizer가 발행하는 '화각 내 관측된 기계' JSON: {"machine_3": 78.5, ...}
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(data, dict):
+            return
+
+        now = _time.strftime("%H:%M:%S")
+        with self._state_lock:
+            for name, temp in data.items():
+                try:
+                    self.measured_machines[name] = {
+                        "temperature": float(temp),
+                        "last_seen": now,
+                    }
+                except (TypeError, ValueError):
+                    continue
+
+    def _on_robot_mode(self, msg: String):
+        with self._state_lock:
+            self.latest_robot_mode = msg.data.strip() or None
+
+    def _on_moth_result(self, msg: String):
+        # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z|DANGER"
+        text = msg.data.strip()
+        if "SOURCE_FOUND" not in text:
+            return
+        parts = text.split("|")
+        try:
+            peak = float(parts[2]) if len(parts) > 2 else None
+        except ValueError:
+            peak = None
+
+        # Unity 좌표 → ROS 좌표 변환 + 구역 판정 (대시보드 '누출원: D구역 (x, y)' 표시용)
+        zone = None
+        ros_xy = None
+        if len(parts) > 3:
+            try:
+                ux, uy, uz = [float(v) for v in parts[3].split(",")]
+                rx, ry = uz, -ux
+                ros_xy = f"({rx:.1f}, {ry:.1f})"
+                zone = self._zone_name(rx, ry)
+            except ValueError:
+                pass
+
+        with self._state_lock:
+            self.latest_moth_result = {
+                "gas_type": self._normalize_gas_type(parts[1]) if len(parts) > 1 else None,
+                "peak_concentration": peak,
+                "position_unity_xyz": parts[3] if len(parts) > 3 else None,
+                "position_ros_xy": ros_xy,
+                "zone": zone,
+                "danger": (parts[4] == "DANGER") if len(parts) > 4 else None,
+            }
 
     def _post_latest_sensor_data(self):
         # Build the payload under the lock, then hand the network I/O to a worker
@@ -218,6 +343,9 @@ class LlmBridgeNode(Node):
                 self.latest_machine_temperatures,
                 self.latest_thermal_alert,
                 self.latest_odom_xy is not None,
+                self.latest_robot_mode,
+                self.latest_moth_result,
+                len(self.status_events) > 0,
             )
         )
 
@@ -239,20 +367,34 @@ class LlmBridgeNode(Node):
             "machine_temperatures": self.latest_machine_temperatures,
             "thermal_alert": self.latest_thermal_alert,
             "location": self._resolve_location(),
+            # 로봇 열화상 실측 온도 (마지막 관측값 유지) — 대시보드 표시는 이걸 사용
+            "measured_machines": [
+                {"id": name, **info}
+                for name, info in self.measured_machines.items()
+            ],
+            # ── 리포트 생성용 사건 데이터 ──
+            "robot_mode": self.latest_robot_mode,          # PATROL / GAS_TRACKING / EVACUATING
+            "source_found": self.latest_moth_result,       # 누출원 특정 결과 (좌표·농도·위험여부)
+            "status_events": list(self.status_events),     # 시간순 상황 보고 타임라인
         }
 
-    def _resolve_location(self) -> str:
-        if self.latest_odom_xy is None:
-            return self.default_location
-
-        x_pos, y_pos = self.latest_odom_xy
+    def _zone_name(self, x_pos: float, y_pos: float) -> str | None:
         for zone in self.zone_rectangles:
             if (
                 zone["x_min"] <= x_pos <= zone["x_max"]
                 and zone["y_min"] <= y_pos <= zone["y_max"]
             ):
                 return zone["name"]
+        return None
 
+    def _resolve_location(self) -> str:
+        if self.latest_odom_xy is None:
+            return self.default_location
+
+        x_pos, y_pos = self.latest_odom_xy
+        name = self._zone_name(x_pos, y_pos)
+        if name:
+            return name
         return f"map(x={x_pos:.2f}, y={y_pos:.2f})"
 
     def _load_zone_rectangles(self, raw_value: str) -> list[dict]:

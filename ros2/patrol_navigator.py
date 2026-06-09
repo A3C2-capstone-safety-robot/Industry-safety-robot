@@ -4,7 +4,8 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from nav2_msgs.action import NavigateToPose
-from geometry_msgs.msg import PoseStamped
+from nav2_msgs.srv import ClearEntireCostmap
+from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 from action_msgs.msg import GoalStatus
@@ -63,6 +64,7 @@ class PatrolNavigator(Node):
         self.caution_thres = 80.0
         self.warning_thres = 100.0
         self.danger_thres = 120.0
+        self.evac_thres = 150.0   # 대피 발동 온도 — Unity maxTemp(180)에 닿기 전에 대피
         self.max_temp = 180.0
         self.overheat_cooldown = 15.0
         self._overheat_reported = {}
@@ -77,6 +79,7 @@ class PatrolNavigator(Node):
 
         self.patrol_active = True
         self.evacuating = False
+        self._leak_xy = None           # 마지막 확인된 누출원 위치 (ROS 좌표) — 대피 경로 회피용
         self._resume_idx = 0           # 중단된 순찰을 이어서 할 지점 인덱스
         self.current_x = 0.0
         self.current_y = 0.0
@@ -93,6 +96,15 @@ class PatrolNavigator(Node):
 
         self._status_pub = self.create_publisher(String, '/robot_status', 10)
         self._mode_pub = self.create_publisher(String, '/robot_mode', 10)
+        self._cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)  # 스턱 탈출용 직접 제어
+
+        # 코스트맵 클리어 서비스 — 대피 직전 유령 장애물 제거용
+        self._clear_global_cli = self.create_client(
+            ClearEntireCostmap, '/global_costmap/clear_entirely_global_costmap',
+            callback_group=cb)
+        self._clear_local_cli = self.create_client(
+            ClearEntireCostmap, '/local_costmap/clear_entirely_local_costmap',
+            callback_group=cb)
 
         self.inspection_points = self.load_inspection_points()
         self.get_logger().info('점검 지점 %d개 로드 완료' % len(self.inspection_points))
@@ -165,8 +177,8 @@ class PatrolNavigator(Node):
             return
         self._overheat_reported[machine] = now
 
-        if temp >= self.max_temp:
-            level, need_evac = '최대(즉시대피)', True
+        if temp >= self.evac_thres:
+            level, need_evac = '심각(즉시대피)', True
         elif temp >= self.danger_thres:
             level, need_evac = '위험', False
         elif temp >= self.warning_thres:
@@ -185,6 +197,11 @@ class PatrolNavigator(Node):
                 if do_evac:
                     self.evacuating = True
                     self.patrol_active = False
+                    self.gas_tracking = False   # 가스 추적 중이었다면 중단
+            # EVACUATING 모드 발행 → Unity MissionCoordinator가 MothSearch를 꺼서
+            # 대피(Nav2)와 가스추적이 /cmd_vel을 동시에 쏘는 충돌 방지
+            if do_evac:
+                self.publish_mode('EVACUATING')
             nearest = self.find_nearest_door()
             report += ' | 대피필요 → 최근접출구:%s' % nearest['name']
             self.publish_status(report)
@@ -263,6 +280,7 @@ class PatrolNavigator(Node):
             rx, ry = uz, -ux  # Unity → ROS 좌표
             zone = get_zone(rx, ry)
             coord_str = '(%.1f, %.1f)' % (rx, ry)
+            self._leak_xy = (rx, ry)   # 대피 출구 선택 시 이 지점 근처 경로 회피
         except (ValueError, IndexError):
             pass
 
@@ -361,26 +379,101 @@ class PatrolNavigator(Node):
                 return False
             time.sleep(0.2)
 
-        return status[0] == GoalStatus.STATUS_SUCCEEDED
+        ok = status[0] == GoalStatus.STATUS_SUCCEEDED
+        if not ok:
+            # 4=SUCCEEDED, 5=CANCELED, 6=ABORTED(보통 '경로 계산 실패')
+            self.get_logger().warn('이동 실패 — GoalStatus=%s (%.1f초 경과)'
+                                   % (status[0], time.time() - start_time))
+        return ok
+
+    # 누출원 근처(반경 m)를 지나는 출구 경로에 줄 가산 비용
+    LEAK_AVOID_RADIUS = 3.0
+    LEAK_PENALTY = 100.0
+
+    def _door_cost(self, d):
+        """출구 우선순위 = 거리 + (직선 경로가 누출원 근처를 지나면 페널티).
+        Nav2 실경로는 직선이 아니지만, '누출원 방향 출구를 후순위로' 미는
+        휴리스틱으로는 충분. 누출원 미확인 시(_leak_xy None) 순수 거리순."""
+        dist = math.hypot(d['x'] - self.current_x, d['y'] - self.current_y)
+        if self._leak_xy is not None:
+            seg_dist = self._seg_point_dist(
+                self.current_x, self.current_y, d['x'], d['y'],
+                self._leak_xy[0], self._leak_xy[1])
+            if seg_dist < self.LEAK_AVOID_RADIUS:
+                dist += self.LEAK_PENALTY
+        return dist
+
+    @staticmethod
+    def _seg_point_dist(x1, y1, x2, y2, px, py):
+        """선분 (x1,y1)-(x2,y2)와 점 (px,py) 사이 최단 거리"""
+        dx, dy = x2 - x1, y2 - y1
+        l2 = dx * dx + dy * dy
+        if l2 < 1e-9:
+            return math.hypot(px - x1, py - y1)
+        t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / l2))
+        return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+
+    def _clear_costmaps(self):
+        """코스트맵 클리어 — 추적 중 쌓인 유령 장애물이 대피 경로를 막는 것 방지"""
+        for name, cli in (('global', self._clear_global_cli),
+                          ('local', self._clear_local_cli)):
+            try:
+                if cli.wait_for_service(timeout_sec=1.0):
+                    cli.call_async(ClearEntireCostmap.Request())
+                else:
+                    self.get_logger().warn('%s costmap clear 서비스 응답 없음' % name)
+            except Exception as e:
+                self.get_logger().warn('costmap clear 실패: %s' % e)
 
     def evacuate(self, door):
         time.sleep(2.0)
-        # 가까운 순서대로 모든 출구 시도 (최근접이 막혀 있으면 다음 출구로)
-        doors = sorted(self.doors,
-                       key=lambda d: math.hypot(d['x'] - self.current_x,
-                                                d['y'] - self.current_y))
+        # 대피 전 코스트맵 클리어 (정적 맵은 유지, 스캔으로 쌓인 장애물만 리셋)
+        self._clear_costmaps()
+        time.sleep(1.0)
+
+        # 가까운 순서대로 모든 출구 시도 — 단, 누출원 근처를 지나는 출구는 후순위
+        doors = sorted(self.doors, key=self._door_cost)
+        if self._leak_xy is not None:
+            self.get_logger().warn('대피 출구 정렬: 누출원(%.1f, %.1f) 회피 반영'
+                                   % self._leak_xy)
         success = False
-        for d in doors:
-            self.get_logger().warn('🚶 대피 → %s' % d['name'])
-            if self.go_to_pose(d['x'], d['y'], 0.0,
-                               abort_check=lambda: False, timeout=90.0):
-                success = True
-                self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % d['name'])
-                self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % d['name'])
-                time.sleep(30)
+        nudged = False
+        for attempt in range(2):                  # 전 출구 실패 시 1회 재시도
+            for d in doors:
+                self.get_logger().warn('🚶 대피 → %s' % d['name'])
+                t0 = time.time()
+                ok = self.go_to_pose(d['x'], d['y'], 0.0,
+                                     abort_check=lambda: False, timeout=90.0)
+
+                # ★ 수 초 내 즉시 실패 = 출발도 못 한 것 (로봇이 기계에 붙어 있어
+                #   시작점이 inflation 안). 다음 출구로 넘어가봤자 똑같이 실패하므로
+                #   즉시 후진 + 코스트맵 클리어 후 '같은 출구'를 재시도.
+                if not ok and not nudged and time.time() - t0 < 8.0:
+                    nudged = True
+                    self.get_logger().warn('⚠ %s 즉시 실패 — 출발점 막힘 추정. '
+                                           '후진+코스트맵 클리어 후 재시도' % d['name'])
+                    self._nudge_backward(2.0)
+                    self._clear_costmaps()
+                    time.sleep(2.0)
+                    ok = self.go_to_pose(d['x'], d['y'], 0.0,
+                                         abort_check=lambda: False, timeout=90.0)
+
+                if ok:
+                    success = True
+                    self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % d['name'])
+                    self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % d['name'])
+                    time.sleep(30)
+                    break
+                self.get_logger().warn('⚠ %s 경로 막힘/실패 — 다음 출구 시도' % d['name'])
+                self.publish_status('[대피실패] %s 도달 불가 — 다음 출구 시도' % d['name'])
+            if success:
                 break
-            self.get_logger().warn('⚠ %s 경로 막힘/실패 — 다음 출구 시도' % d['name'])
-            self.publish_status('[대피실패] %s 도달 불가 — 다음 출구 시도' % d['name'])
+            if attempt == 0:
+                # 전 출구 실패 — 한 번 더 후진으로 빼고 전체 재시도
+                self.get_logger().warn('전 출구 실패 — 후진으로 장애물 이탈 후 재시도')
+                self._nudge_backward(2.0)
+                self._clear_costmaps()
+                time.sleep(3.0)
 
         if not success:
             self.get_logger().error('❌ 모든 출구 도달 실패 — 현 위치 대기 후 순찰 복귀')
@@ -393,6 +486,16 @@ class PatrolNavigator(Node):
         self.gas_tracking = False
         self.publish_mode('PATROL')
         self.get_logger().info('🔄 순찰 재개!')
+
+    def _nudge_backward(self, duration=2.0):
+        """/cmd_vel 직접 발행으로 천천히 후진 — inflation 영역 탈출용."""
+        twist = Twist()
+        twist.linear.x = -0.15
+        end = time.time() + duration
+        while time.time() < end:
+            self._cmd_pub.publish(twist)
+            time.sleep(0.1)
+        self._cmd_pub.publish(Twist())  # 정지
 
     def _interrupted(self):
         return self.evacuating or not self.patrol_active
