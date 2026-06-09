@@ -932,6 +932,14 @@ public class FrontierExplorer : MonoBehaviour
     }
 
     // ==============================================================
+    // Minimap API
+    // ==============================================================
+    public ExplorationMapSnapshot MapSnapshot => mapSnapshot;
+    public IReadOnlyList<Vector3> Waypoints   => waypoints;
+    public int  WaypointIndex => wpIdx;
+    public bool IsActive      => isActive;
+
+    // ==============================================================
     // Editor visualization
     // ==============================================================
     void OnDrawGizmos()
