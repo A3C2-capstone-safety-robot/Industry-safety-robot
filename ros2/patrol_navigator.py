@@ -460,9 +460,9 @@ class PatrolNavigator(Node):
 
                 if ok:
                     success = True
-                    self.get_logger().warn('✅ 대피 완료! %s 도착. 30초 후 순찰 재개...' % d['name'])
+                    self.get_logger().warn('✅ 대피 완료! %s 도착. 10초 후 순찰 재개...' % d['name'])
                     self.publish_status('[대피완료] %s 도착. 순찰 재개 대기' % d['name'])
-                    time.sleep(30)
+                    time.sleep(10)
                     break
                 self.get_logger().warn('⚠ %s 경로 막힘/실패 — 다음 출구 시도' % d['name'])
                 self.publish_status('[대피실패] %s 도달 불가 — 다음 출구 시도' % d['name'])
