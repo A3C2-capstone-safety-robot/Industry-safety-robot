@@ -1,25 +1,37 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Robotics.ROSTCPConnector;
+using RosMessageTypes.Nav;
 
 /// <summary>
 /// OccupancyGrid(/map) 기반 2D 미니맵.
 /// - 회색: 미탐색 / 흰색: 이동 가능 / 검정: 벽·장애물
-/// - 시안 선: 계획된 이동 경로 (waypoints)
+/// - 시안 선: 계획된 이동 경로 (waypoints) — FrontierExplorer 활성 시에만
 /// - 노랑 점: 현재 목표 웨이포인트
 /// - 초록 점+선: 로봇 위치·방향
 /// - 색상 점: 기계 온도 상태 (파랑→노랑→주황→빨강)
 /// - 색상 오버레이: 활성 가스 누출 농도 (노랑→빨강)
 ///
+/// ★ 맵 데이터(/map)를 직접 구독하므로 FrontierExplorer와 독립적으로 동작한다.
+///   순찰(Nav2) 모드처럼 Frontier 탐색이 꺼져 있어도 미니맵은 정상 표시된다.
+///
 /// 사용법:
 /// 1. Canvas 하위에 RawImage UI 생성 후 이 컴포넌트를 붙인다.
-/// 2. explorer 필드에 FrontierExplorer가 붙은 로봇 GameObject를 연결한다.
-/// 3. robotTransform 필드에 로봇 루트 Transform을 연결한다.
+/// 2. robotTransform 필드에 로봇 루트 Transform을 연결한다. (필수)
+/// 3. explorer 필드는 선택 — 연결하면 Frontier 탐색 경로도 미니맵에 표시된다.
 /// </summary>
 [RequireComponent(typeof(RawImage))]
 public class MinimapController : MonoBehaviour
 {
+    [Header("ROS")]
+    [Tooltip("점유 격자 맵 토픽 (slam_toolbox 또는 map_server가 발행)")]
+    public string mapTopic = "/map";
+
     [Header("References")]
+    [Tooltip("로봇 루트 Transform (필수) — 미니맵에 로봇 위치·방향 표시용")]
+    public Transform robotTransform;
+    [Tooltip("선택: FrontierExplorer. 연결 시 탐색 경로(웨이포인트)도 그림. 비워두거나 꺼져 있어도 미니맵은 동작")]
     public FrontierExplorer explorer;
 
     [Header("Settings")]
@@ -34,6 +46,7 @@ public class MinimapController : MonoBehaviour
     Color32[]            framePixels;  // 매 업데이트마다 덮어쓰는 최종 버퍼
     float                timer;
     ExplorationMapSnapshot lastSnapshot;
+    ExplorationMapSnapshot mapSnapshot; // /map 직접 구독으로 채워짐
 
     MachineHeat[]        machines;
     GaussianPlumeModel[] gasModels;
@@ -63,6 +76,18 @@ public class MinimapController : MonoBehaviour
     {
         machines  = FindObjectsByType<MachineHeat>(FindObjectsSortMode.None);
         gasModels = FindObjectsByType<GaussianPlumeModel>(FindObjectsSortMode.None);
+
+        // ★ /map 직접 구독 — FrontierExplorer 유무와 무관하게 맵 수신
+        ROSConnection.GetOrCreateInstance().Subscribe<OccupancyGridMsg>(mapTopic, OnMap);
+
+        // robotTransform 미연결 시 explorer에서 보조로 가져옴 (하위호환)
+        if (robotTransform == null && explorer != null)
+            robotTransform = explorer.transform;
+    }
+
+    void OnMap(OccupancyGridMsg msg)
+    {
+        mapSnapshot = ExplorationMapSnapshot.FromOccupancyGrid(msg);
     }
 
     void Update()
@@ -71,8 +96,9 @@ public class MinimapController : MonoBehaviour
         if (timer < updateInterval) return;
         timer = 0f;
 
-        if (explorer == null) return;
-        var snap = explorer.MapSnapshot;
+        // 맵은 자체 구독분 우선, 없으면 explorer 것이라도 사용 (하위호환)
+        var snap = mapSnapshot
+                   ?? (explorer != null ? explorer.MapSnapshot : null);
         if (snap == null) return;
 
         if (!ReferenceEquals(snap, lastSnapshot))
@@ -160,6 +186,9 @@ public class MinimapController : MonoBehaviour
 
     void DrawPath(ExplorationMapSnapshot snap)
     {
+        // Frontier 탐색이 없거나 꺼져 있으면 경로 레이어는 생략 (미니맵 자체는 계속 동작)
+        if (explorer == null || !explorer.IsActive) return;
+
         IReadOnlyList<Vector3> wps   = explorer.Waypoints;
         int                    wpIdx = explorer.WaypointIndex;
 
@@ -178,7 +207,12 @@ public class MinimapController : MonoBehaviour
 
     void DrawRobot(ExplorationMapSnapshot snap)
     {
-        Transform t = explorer.transform;
+        // robotTransform 우선, 없으면 explorer 트랜스폼 폴백
+        Transform t = robotTransform != null
+            ? robotTransform
+            : (explorer != null ? explorer.transform : null);
+        if (t == null) return;
+
         Vector2Int rc = snap.WorldToCell(t.position);
         DrawDot(snap, rc, 3, RobotColor);
 
