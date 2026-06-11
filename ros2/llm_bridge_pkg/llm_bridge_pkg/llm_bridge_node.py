@@ -236,8 +236,17 @@ class LlmBridgeNode(Node):
                     continue
 
     def _on_robot_mode(self, msg: String):
+        mode = msg.data.strip() or None
         with self._state_lock:
-            self.latest_robot_mode = msg.data.strip() or None
+            prev = self.latest_robot_mode
+            self.latest_robot_mode = mode
+            # 순찰(PATROL) 복귀 = 한 사건 종료. 누출원 기억을 리셋해
+            # 다음 누출이 '새 사건'으로 잡히도록 (백엔드 new_source 트리거 재작동).
+            # 추적/대피 중에는 유지해야 하므로 PATROL 전환 순간에만 초기화.
+            if mode == "PATROL" and prev not in (None, "PATROL"):
+                if self.latest_moth_result is not None:
+                    self.get_logger().info("[llm_bridge] 순찰 복귀 — 누출원 기억 리셋")
+                self.latest_moth_result = None
 
     def _on_moth_result(self, msg: String):
         # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z|DANGER"
