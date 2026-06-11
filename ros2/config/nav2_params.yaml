@@ -48,10 +48,10 @@ controller_server:
 
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.9          # 0.4 → 0.9 (직선 구간 속도 상승)
-      lookahead_dist: 0.9              # 속도에 맞춰 전방 주시 거리 확대
-      min_lookahead_dist: 0.4
-      max_lookahead_dist: 2.0          # 고속에서 더 멀리 보고 코너 준비
+      desired_linear_vel: 0.5
+      lookahead_dist: 0.7
+      min_lookahead_dist: 0.35
+      max_lookahead_dist: 1.5
       use_velocity_scaled_lookahead_dist: true
       max_angular_accel: 3.2
       # 코너/장애물 근처에서는 자동 감속 (속도 올린 만큼 안전장치 활성화)
