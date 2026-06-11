@@ -121,6 +121,16 @@ function App() {
   } else {
     sourceStatus = "누출원: 미특정";
   }
+
+  // 활성 가스가 없으면(정상·순찰 중) 검출 가스 표시를 "없음"으로
+  const gasActive =
+    (risk.gas_risk && risk.gas_risk !== "Normal") ||
+    sensor.robot_mode === "GAS_TRACKING" ||
+    !!src;
+  const gasTypeDisplay =
+    gasActive && gas.gas_type && gas.gas_type !== "UNKNOWN"
+      ? gas.gas_type
+      : "없음";
   
    return (
     <div style={styles.page}>
@@ -153,7 +163,7 @@ function App() {
 
         <div style={styles.card}>
           <p style={styles.cardLabel}>검출 가스</p>
-          <h2 style={styles.cardValue}>{gas.gas_type}</h2>
+          <h2 style={styles.cardValue}>{gasTypeDisplay}</h2>
           <p style={styles.cardSub}>
             {Number(gas.concentration_ppm).toFixed(1)} ppm
           </p>

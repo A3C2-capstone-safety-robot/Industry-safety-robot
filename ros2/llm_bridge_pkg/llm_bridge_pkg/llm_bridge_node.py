@@ -245,8 +245,12 @@ class LlmBridgeNode(Node):
             # 추적/대피 중에는 유지해야 하므로 PATROL 전환 순간에만 초기화.
             if mode == "PATROL" and prev not in (None, "PATROL"):
                 if self.latest_moth_result is not None:
-                    self.get_logger().info("[llm_bridge] 순찰 복귀 — 누출원 기억 리셋")
+                    self.get_logger().info("[llm_bridge] 순찰 복귀 — 가스/누출원 기억 리셋")
+                # 사건 종료 → 누출원·가스 종류·가스 경보 모두 초기화
+                # (가스 농도는 센서가 계속 보내므로 그대로 둠)
                 self.latest_moth_result = None
+                self.latest_gas_type = None
+                self.latest_gas_alert = None
 
     def _on_moth_result(self, msg: String):
         # 형식: "SOURCE_FOUND|NH3|85.3|x,y,z|DANGER"
