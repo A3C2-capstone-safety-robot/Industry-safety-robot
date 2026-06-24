@@ -1,5 +1,9 @@
 slam_toolbox:
   ros__parameters:
+    # Unity는 /clock을 발행하지 않으므로 실제 시각(wall time) 사용.
+    # true면 SLAM이 시뮬시간(0)을 기다려 TF 룩업 실패 → "Failed to compute odom pose"
+    use_sim_time: false
+
     # 동작 모드
     mode: mapping
     solver_plugin: solver_plugins::CeresSolver
