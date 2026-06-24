@@ -222,13 +222,6 @@ ros2 run llm_bridge_pkg llm_bridge_node
 
 > 대시보드는 평소처럼 **Nav2 + patrol_navigator**를 띄운 상태에서 위 백엔드·프론트·브리지 노드를 함께 실행합니다.
 
-### Docker로 한 번에 실행 (선택)
-
-```bash
-cd docker
-docker-compose up
-```
-
 ---
 
 ## 동작 시나리오
