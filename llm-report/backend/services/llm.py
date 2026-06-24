@@ -1,3 +1,4 @@
+
 # backend/services/llm.py
 
 import os
@@ -58,4 +59,5 @@ def call_llm(prompt: str) -> str:
 
     except Exception as e:
         print("OpenAI API 오류:", e)
+
         return fake_response(prompt)

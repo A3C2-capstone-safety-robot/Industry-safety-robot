@@ -1,3 +1,4 @@
+
 # 센서값 + 검색 근거로 LLM 리포트 작성
 # backend/services/report_generator.py
 
@@ -148,5 +149,4 @@ def generate_report(sensor_data: dict, risk_result: dict) -> str:
 - 작업자가 바로 이해할 수 있게 작성할 것
 - 너무 길게 쓰지 말 것
 """
-
     return call_llm(prompt)

@@ -1,3 +1,4 @@
+
 import threading
 import time
 
@@ -175,4 +176,5 @@ def get_report():
         "sensor_data": latest_sensor_data,
         "risk": latest_risk_result,
         "report": report,
+
     }

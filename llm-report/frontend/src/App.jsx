@@ -64,6 +64,30 @@ function App() {
     }
   }
 
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        const sensorRes = await fetch("http://127.0.0.1:8000/sensor");
+        const sensorJson = await sensorRes.json();
+
+        setSensor(sensorJson.sensor_data);
+        setRisk(sensorJson.risk);
+
+        const reportRes = await fetch("http://127.0.0.1:8000/report");
+        const reportJson = await reportRes.json();
+
+        setReport(reportJson.report);
+      } catch (err) {
+        console.error(err);
+        setError("데이터를 불러오지 못했습니다.");
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
   if (error) {
     return <div style={styles.center}>{error}</div>;
   }
