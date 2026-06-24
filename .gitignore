@@ -120,6 +120,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .env
+.env.*
+llm-report/backend/env
 venv/
 .venv/
 

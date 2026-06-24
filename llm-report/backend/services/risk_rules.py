@@ -1,3 +1,4 @@
+
 # 센서값 입력 시 NH3 / H2S / CH4 기준 위험도 판단
 # Normal / Caution / Warning / DAnger 반환
 # 센서값 기준 1차 위험도 계산
@@ -114,3 +115,4 @@ def analyze_risk(sensor_data: dict) -> dict:
         "max_temperature": max_temperature,
         "temperature_unit": "°C",
     }
+
